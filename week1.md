@@ -8,6 +8,7 @@
 ## Step 1: Found target IP
 Ran `ifconfig` on Metasploitable2 to find its IP address.
 <img width="720" height="400" alt="VirtualBox_Metasploitable 2_04_07_2026_01_06_10" src="https://github.com/user-attachments/assets/9b70d4f1-d4a5-4e9a-8127-d763c33fd323" />
+
 Target IP: 192.168.100.150
 
 ## Step 2: Confirmed connectivity
