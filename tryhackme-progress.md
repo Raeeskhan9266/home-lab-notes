@@ -1,15 +1,15 @@
 # TryHackMe Progress
 
 ## Pre Security Path
-- [x] **Room 1: Introduction to Cyber Security**
+## **Module 1: Introduction to Cyber Security**
   
-Overview room (no hands-on tasks).
+Overview (no hands-on tasks).
   Covered the difference between offensive security (attacking systems to
   find weaknesses, e.g. penetration testing) and defensive security
   (protecting systems and responding to attacks, e.g. SOC analyst, incident
   response). Also introduced different career paths within cybersecurity.
   
-- [x] **Room 2: Offensive Security Intro**
+- [x] **Room 1: Offensive Security Intro**
 
 Key concepts covered:
 - Introduction to offensive security and how it differs from defensive security
@@ -42,7 +42,7 @@ through properly authenticated, authorized routes. Gobuster proved how
 attackers routinely find these "hidden" pages that developers assume are safe
 simply because they aren't linked in the UI.
 
-- [x]  **Room 3: Defensive Security Intro**
+- [x]  **Room 2: Defensive Security Intro**
 
 Key concepts covered:
 - Introduction to defensive security and how it complements offensive security
@@ -81,7 +81,7 @@ Understanding both sides — how attacks are carried out and how they're
 detected/blocked — gives a more complete picture of real-world security work,
 and reinforces why fast detection and response matters as much as prevention.
 
-- [x]  **Room 4: Careers in Cyber**
+- [x]  **Room 3: Careers in Cyber**
 
 ## Overview
 This room covered an overview of different career paths within cybersecurity,
