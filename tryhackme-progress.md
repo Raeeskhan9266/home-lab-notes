@@ -1,7 +1,7 @@
 # TryHackMe Progress
 
 ## Pre Security Path
-- [x] Room 1: Introduction to Cyber Security
+- [x] **Room 1: Introduction to Cyber Security**
   
 Overview room (no hands-on tasks).
   Covered the difference between offensive security (attacking systems to
@@ -9,7 +9,7 @@ Overview room (no hands-on tasks).
   (protecting systems and responding to attacks, e.g. SOC analyst, incident
   response). Also introduced different career paths within cybersecurity.
   
-- [x] Room 2: Offensive Security Intro
+- [x] **Room 2: Offensive Security Intro**
 
 Key concepts covered:
 - Introduction to offensive security and how it differs from defensive security
@@ -42,7 +42,7 @@ through properly authenticated, authorized routes. Gobuster proved how
 attackers routinely find these "hidden" pages that developers assume are safe
 simply because they aren't linked in the UI.
 
-- [x]  Room 3: Defensive Security Intro
+- [x]  **Room 3: Defensive Security Intro**
 
 Key concepts covered:
 - Introduction to defensive security and how it complements offensive security
@@ -80,3 +80,36 @@ at the firewall.
 Understanding both sides — how attacks are carried out and how they're
 detected/blocked — gives a more complete picture of real-world security work,
 and reinforces why fast detection and response matters as much as prevention.
+
+- [x]  **Room 4: Careers in Cyber**
+
+## Overview
+This room covered an overview of different career paths within cybersecurity,
+along with the core responsibilities of each role:
+
+- **Security Analyst** — Monitors systems and networks for suspicious activity,
+  analyzes alerts, and investigates potential security incidents
+- **Security Engineer** — Designs, builds, and maintains security systems and
+  infrastructure (firewalls, security tools, secure architecture)
+- **Incident Responder** — Responds to active security breaches, contains
+  damage, and manages the process of recovering from an attack
+- **Digital Forensics Examiner** — Investigates systems after an incident to
+  collect and preserve evidence, and reconstructs how an attack happened
+- **Malware Analyst** — Reverse-engineers and studies malicious software to
+  understand its behavior, origin, and impact
+- **Penetration Tester** — Simulates real-world attacks against systems and
+  applications (with authorization) to find vulnerabilities before malicious
+  actors do
+- **Red Teamer** — Simulates full-scale, realistic adversary attacks against
+  an organization to test detection and response capabilities across people,
+  process, and technology — broader in scope than standard penetration testing
+
+## What I Learned
+This room helped me understand how the different roles in cybersecurity
+connect to each other — offensive roles (Penetration Tester, Red Teamer) find
+and exploit weaknesses, while defensive roles (Security Analyst, Incident
+Responder, Digital Forensics Examiner) detect, respond to, and investigate
+those same attacks. Malware Analyst and Security Engineer sit slightly
+adjacent to both, focusing on understanding threats and building resilient
+systems respectively.
+
