@@ -71,14 +71,14 @@ respond to a simulated security incident:
 This room gave me the "other side" of the picture compared to my offensive
 work so far. Where my home lab exercises (Metasploitable2, Gobuster) focused
 on finding and exploiting weaknesses, this room showed how defenders detect
-and respond to those same kinds of attacks in real time — a SIEM tool
+and respond to those same kinds of attacks in real time, a SIEM tool
 essentially aggregates logs and alerts across a network so a SOC analyst can
 spot suspicious activity (like repeated failed logins or unusual access
 patterns) and act on it quickly, in this case by blocking the offending IP
 at the firewall.
 
-Understanding both sides — how attacks are carried out and how they're
-detected/blocked — gives a more complete picture of real-world security work,
+Understanding both sides how attacks are carried out and how they're
+detected/blocked gives a more complete picture of real-world security work,
 and reinforces why fast detection and response matters as much as prevention.
 
 - [x]  **Room 3: Careers in Cyber**
@@ -87,29 +87,72 @@ and reinforces why fast detection and response matters as much as prevention.
 This room covered an overview of different career paths within cybersecurity,
 along with the core responsibilities of each role:
 
-- **Security Analyst** — Monitors systems and networks for suspicious activity,
+- **Security Analyst:** Monitors systems and networks for suspicious activity,
   analyzes alerts, and investigates potential security incidents
-- **Security Engineer** — Designs, builds, and maintains security systems and
+- **Security Engineer:** Designs, builds, and maintains security systems and
   infrastructure (firewalls, security tools, secure architecture)
-- **Incident Responder** — Responds to active security breaches, contains
+- **Incident Responder:** Responds to active security breaches, contains
   damage, and manages the process of recovering from an attack
-- **Digital Forensics Examiner** — Investigates systems after an incident to
+- **Digital Forensics Examiner:** Investigates systems after an incident to
   collect and preserve evidence, and reconstructs how an attack happened
-- **Malware Analyst** — Reverse-engineers and studies malicious software to
+- **Malware Analyst:** Reverse-engineers and studies malicious software to
   understand its behavior, origin, and impact
-- **Penetration Tester** — Simulates real-world attacks against systems and
+- **Penetration Tester:** Simulates real-world attacks against systems and
   applications (with authorization) to find vulnerabilities before malicious
   actors do
-- **Red Teamer** — Simulates full-scale, realistic adversary attacks against
+- **Red Teamer:** Simulates full-scale, realistic adversary attacks against
   an organization to test detection and response capabilities across people,
-  process, and technology — broader in scope than standard penetration testing
+  process, and technology broader in scope than standard penetration testing
 
 ## What I Learned
 This room helped me understand how the different roles in cybersecurity
-connect to each other — offensive roles (Penetration Tester, Red Teamer) find
+connect to each other offensive roles (Penetration Tester, Red Teamer) find
 and exploit weaknesses, while defensive roles (Security Analyst, Incident
 Responder, Digital Forensics Examiner) detect, respond to, and investigate
 those same attacks. Malware Analyst and Security Engineer sit slightly
 adjacent to both, focusing on understanding threats and building resilient
 systems respectively.
 
+## **Module 2: Network Fundamentals**
+
+- [x]  **Room 5: What is Networking?**
+
+
+## Key concepts covered:
+- What networking is and how devices communicate with each other
+- What the Internet is and how data travels across interconnected networks
+- Identifying devices on a network using two key identifiers:
+  - **IP Address:** a logical address assigned to a device on a network,
+    used for routing data to the correct destination
+  - **MAC Address:** a unique, physical hardware address burned into a
+    device's network interface, used for communication within a local network
+
+## Practicle 1: MAC Spoofing
+Practiced changing a device's MAC address to a different (spoofed) value.
+
+This demonstrated how MAC addresses, despite being described as fixed/
+hardware-based, can actually be changed at the software level which has real
+security implications (e.g., bypassing MAC-based access controls or network
+filtering, and understanding why relying on MAC addresses alone for security
+is not fully reliable).
+
+## Practicle 2: Ping (ICMP)
+Ran a practical ping test to a public IP address:
+
+ping -c 4 8.8.8.8
+
+This sends ICMP (Internet Control Message Protocol) echo request packets to
+the target and waits for echo replies, confirming whether the target is
+reachable and measuring round-trip response time. This is the same core
+technique I used earlier in my home lab to confirm connectivity between Kali
+and Metasploitable2 before running Nmap scans.
+
+## What I Learned
+This room reinforced the foundational building blocks of networking that
+everything else in cybersecurity depends on. Understanding the difference
+between IP and MAC addresses, and how spoofing works at the MAC layer, connects
+directly to real attack techniques (e.g., attackers spoofing MAC addresses to
+evade network access controls). The ping/ICMP lab was a direct, practical
+refresher of a technique I'd already used in my own home lab setup 
+reinforcing that recon and connectivity checks are a recurring first step
+across all areas of networking and security work.
