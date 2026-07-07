@@ -42,7 +42,7 @@ WAF was successfully bypassed.
 
 ### 5. Determined the query returns a single column
 Testing showed that returning more than one column caused the application to
-respond with "0 units," indicating an error — meaning the original query only
+respond with "0 units," indicating an error meaning the original query only
 selects a single column.
 
 ### 6. Extracted credentials via string concatenation
@@ -61,15 +61,15 @@ administrative access and solving the lab.
 ## What I Learned
 This lab combined three separate concepts into one real attack chain:
 
-1. **WAFs filter patterns, not intent** — the WAF blocked the literal string
+1. **WAFs filter patterns, not intent:** the WAF blocked the literal string
    `UNION SELECT`, but had no way to catch the same instruction once it was
    XML-entity encoded and later decoded server-side. This shows why
    defense-in-depth matters: a WAF alone is not a substitute for fixing the
    underlying SQL injection vulnerability.
-2. **Column count matters for UNION-based injection** — before data can be
+2. **Column count matters for UNION-based injection:** before data can be
    exfiltrated via UNION SELECT, the attacker must match the number of
    columns in the original query, or the query fails.
-3. **String concatenation bypasses single-column limitations** — when only
+3. **String concatenation bypasses single-column limitations:** when only
    one column can be returned, multiple values (like username and password)
    can still be extracted together by concatenating them with a delimiter.
 
