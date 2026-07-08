@@ -133,5 +133,3 @@ TrackingId=xyz' AND (SELECT SUBSTRING(password,2,1) FROM users WHERE username='a
 Launch the modified attack, review the results, and note the character at the second offset.
 Continue this process testing offset 3, 4, and so on, until you have the whole password.
 In the browser, click My account to open the login page. Use the password to log in as the administrator user.
-Note
-For more advanced users, the solution described here could be made more elegant in various ways. For example, instead of iterating over every character, you could perform a binary search of the character space. Or you could create a single Intruder attack with two payload positions and the cluster bomb attack type, and work through all permutations of offsets and character values.
