@@ -121,15 +121,3 @@ TrackingId=xyz' AND (SELECT SUBSTRING(password,1,1) FROM users WHERE username='a
 This uses the SUBSTRING() function to extract a single character from the password, and test it against a specific value. Our attack will cycle through each position and possible value, testing each one in turn.
 
 Place payload position markers around the final a character in the cookie value. To do this, select just the a, and click the Add § button. You should then see the following as the cookie value (note the payload position markers):
-
-TrackingId=xyz' AND (SELECT SUBSTRING(password,1,1) FROM users WHERE username='administrator')='§a§
-To test the character at each position, you'll need to send suitable payloads in the payload position that you've defined. You can assume that the password contains only lowercase alphanumeric characters. In the Payloads side panel, check that Simple list is selected, and under Payload configuration add the payloads in the range a - z and 0 - 9. You can select these easily using the Add from list drop-down.
-To be able to tell when the correct character was submitted, you'll need to grep each response for the expression Welcome back. To do this, click on the  Settings tab to open the Settings side panel. In the Grep - Match section, clear existing entries in the list, then add the value Welcome back.
-Launch the attack by clicking the  Start attack button.
-Review the attack results to find the value of the character at the first position. You should see a column in the results called Welcome back. One of the rows should have a tick in this column. The payload showing for that row is the value of the character at the first position.
-Now, you simply need to re-run the attack for each of the other character positions in the password, to determine their value. To do this, go back to the Intruder tab, and change the specified offset from 1 to 2. You should then see the following as the cookie value:
-
-TrackingId=xyz' AND (SELECT SUBSTRING(password,2,1) FROM users WHERE username='administrator')='a
-Launch the modified attack, review the results, and note the character at the second offset.
-Continue this process testing offset 3, 4, and so on, until you have the whole password.
-In the browser, click My account to open the login page. Use the password to log in as the administrator user.
