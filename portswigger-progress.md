@@ -141,14 +141,14 @@ no data was ever directly visible in the response — everything had to be
 inferred through true/false behavior alone (a technique called **blind SQL
 injection**). Key takeaways:
 
-1. **Any observable difference in application behavior can leak information**
-   — here, the presence or absence of a single UI message was enough to
+1. **Any observable difference in application behavior can leak information:**
+   here, the presence or absence of a single UI message was enough to
    extract an entire password, one bit of information at a time.
-2. **Burp Intruder is essential for scaling manual techniques** — testing 20
+2. **Burp Intruder is essential for scaling manual techniques:** testing 20
    characters against 36 possibilities manually would take hundreds of
    requests; Intruder automates the payload cycling and uses response
    grep-matching to instantly identify the correct value.
-3. **SUBSTRING-based extraction is a core blind SQLi technique** — isolating
+3. **SUBSTRING-based extraction is a core blind SQLi technique:** isolating
    one character at a time via a subquery is the standard method for
    extracting unknown data when no direct output channel exists.
 
@@ -159,11 +159,10 @@ direct data back, only a behavioral signal.
 
 
 ### Lab: Blind SQL Injection with Conditional Errors
-Completed: [aaj ki date]
 
 ## Objective
 Exploit a blind SQL injection vulnerability where the application gives no
-visible difference in content between true/false conditions — instead,
+visible difference in content between true/false conditions instead,
 information must be inferred by deliberately triggering (or avoiding) a
 database error, detectable via the HTTP response status code.
 
@@ -174,7 +173,7 @@ Tested the `TrackingId` cookie with a single quote:
 TrackingId=xyz'
 This produced an error. Adding a second quote to close the string:
 TrackingId=xyz''
-removed the error — confirming the input was affecting SQL syntax directly.
+removed the error confirming the input was affecting SQL syntax directly.
 
 ### 2. Identified the database type
 Constructed a subquery to confirm the injection was being processed as valid
@@ -182,7 +181,7 @@ SQL, rather than causing an unrelated error:
 TrackingId=xyz'||(SELECT '')||'
 This still errored. Adding an explicit table name:
 TrackingId=xyz'||(SELECT '' FROM dual)||'
-resolved the error — since Oracle requires all SELECT statements to reference
+resolved the error since Oracle requires all SELECT statements to reference
 a table (using `dual` when none is needed), this confirmed the backend
 database was **Oracle**.
 
@@ -190,7 +189,7 @@ database was **Oracle**.
 Verified that querying a non-existent table:
 TrackingId=xyz'||(SELECT '' FROM not-a-real-table)||'
 produced an error, proving the application's error behavior directly reflects
-the validity of the injected SQL — giving a reliable true/false channel even
+the validity of the injected SQL giving a reliable true/false channel even
 without any visible content difference.
 
 ### 4. Confirmed table and user existence
@@ -204,7 +203,7 @@ deliberately triggers a divide-by-zero error only when a condition is true:
 TrackingId=xyz'||(SELECT CASE WHEN (1=1) THEN TO_CHAR(1/0) ELSE '' END FROM dual)||'
 This errored (condition true). Testing a false condition:
 TrackingId=xyz'||(SELECT CASE WHEN (1=2) THEN TO_CHAR(1/0) ELSE '' END FROM dual)||'
-produced no error — confirming conditional error triggering as a reliable
+produced no error confirming conditional error triggering as a reliable
 true/false signal.
 
 ### 6. Confirmed the administrator account exists
@@ -225,7 +224,7 @@ TrackingId=xyz'||(SELECT CASE WHEN SUBSTR(password,1,1)='§a§' THEN TO_CHAR(1/0
 - Configured payloads: lowercase a-z and 0-9
 - Instead of grep-matching text (as in the previous lab), identified the
   correct character by checking the **HTTP status code** in Intruder's
-  results — HTTP 500 indicated the condition was true (error triggered),
+  results HTTP 500 indicated the condition was true (error triggered),
   HTTP 200 indicated false
 - Repeated the attack for each character offset (1 → 20) to reconstruct the
   full password
@@ -237,21 +236,21 @@ Used the recovered password to log in and solve the lab.
 This lab is a variant of blind SQL injection called **error-based blind SQLi**,
 distinct from the earlier conditional-*content* technique:
 
-1. **Two different blind SQLi signals exist** — conditional differences in
+1. **Two different blind SQLi signals exist:** conditional differences in
    page *content* (previous lab) vs. conditional *errors/status codes*
    (this lab). When content doesn't change based on true/false conditions,
    deliberately forcing an error (e.g. divide-by-zero) becomes the covert
    channel instead.
-2. **Fingerprinting the database matters** — the requirement to reference
+2. **Fingerprinting the database matter:** the requirement to reference
    `dual` revealed the backend was Oracle, which directly shaped the syntax
    of every subsequent payload (Oracle-specific functions like `TO_CHAR` and
    `SUBSTR` were required).
-3. **Burp Intruder can filter on status code, not just response text** — this
+3. **Burp Intruder can filter on status code, not just response text:** this
    lab used HTTP 500 vs. 200 as the success indicator instead of grep-matching
    a string, showing Intruder's flexibility for different blind injection
    scenarios.
 
-This reinforces that blind SQL injection isn't one fixed technique — it's a
+This reinforces that blind SQL injection isn't one fixed technique it's a
 category of approaches, and identifying which observable signal (content,
 error, timing) is available is the first step before choosing an extraction
 method.
