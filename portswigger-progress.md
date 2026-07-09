@@ -121,3 +121,83 @@ TrackingId=xyz' AND (SELECT SUBSTRING(password,1,1) FROM users WHERE username='a
 This uses the SUBSTRING() function to extract a single character from the password, and test it against a specific value. Our attack will cycle through each position and possible value, testing each one in turn.
 
 Place payload position markers around the final a character in the cookie value. To do this, select just the a, and click the Add § button. You should then see the following as the cookie value (note the payload position markers):
+
+
+### Lab: Blind SQL Injection with Conditional Responses
+Completed: [aaj ki date]
+
+## Objective
+Exploit a blind SQL injection vulnerability — where the application doesn't
+directly display query results or errors — by inferring information one
+true/false condition at a time, using the presence/absence of a "Welcome
+back" message as the signal.
+
+## Steps Taken
+
+### 1. Identified the injection point
+Intercepted the request containing the `TrackingId` cookie using Burp Suite
+and confirmed it was being used in a server-side SQL query.
+
+### 2. Confirmed a boolean-based injection was possible
+Tested a condition known to be true:
+TrackingId=xyz' AND '1'='1
+The "Welcome back" message appeared. Then tested a condition known to be false:
+TrackingId=xyz' AND '1'='2
+The message disappeared. This confirmed the application's response visibly
+changes based on whether the injected condition evaluates to true or false —
+the foundation of blind SQL injection.
+
+### 3. Confirmed table and user existence
+Used subqueries to test for the existence of specific data without ever
+seeing the data directly:
+TrackingId=xyz' AND (SELECT 'a' FROM users LIMIT 1)='a
+TrackingId=xyz' AND (SELECT 'a' FROM users WHERE username='administrator')='a
+Both returned true, confirming a `users` table exists and contains an
+`administrator` account.
+
+### 4. Determined password length
+Used the `LENGTH()` function combined with the same true/false technique,
+incrementing the tested length each time:
+TrackingId=xyz' AND (SELECT 'a' FROM users WHERE username='administrator' AND LENGTH(password)>N)='a
+Increased N manually via Burp Repeater until the condition stopped being
+true, revealing the password length: 20 characters.
+
+### 5. Extracted the password character-by-character using Burp Intruder
+Manually testing every character at every position (20 positions × 36
+possible characters) would mean hundreds of requests, so switched to **Burp
+Intruder** to automate this:
+- Used `SUBSTRING(password, position, 1)` to isolate one character at a time
+- Set a payload position marker on the character being guessed:
+TrackingId=xyz' AND (SELECT SUBSTRING(password,1,1) FROM users WHERE username='administrator')='§a§
+- Configured the payload list to lowercase letters (a-z) and digits (0-9)
+- Set a **Grep - Match** rule for the string "Welcome back" so Intruder could
+  automatically flag which payload produced a true result
+- Ran the attack, identified the correct character where "Welcome back"
+  appeared (ticked in results)
+- Repeated the process for each position (changing offset 1 → 2 → 3...) until
+  all 20 characters of the password were recovered
+
+### 6. Logged in as administrator
+Used the fully reconstructed password to log in via the account login page,
+solving the lab.
+
+## What I Learned
+This lab was a significant step up from previous SQL injection labs because
+no data was ever directly visible in the response — everything had to be
+inferred through true/false behavior alone (a technique called **blind SQL
+injection**). Key takeaways:
+
+1. **Any observable difference in application behavior can leak information**
+   — here, the presence or absence of a single UI message was enough to
+   extract an entire password, one bit of information at a time.
+2. **Burp Intruder is essential for scaling manual techniques** — testing 20
+   characters against 36 possibilities manually would take hundreds of
+   requests; Intruder automates the payload cycling and uses response
+   grep-matching to instantly identify the correct value.
+3. **SUBSTRING-based extraction is a core blind SQLi technique** — isolating
+   one character at a time via a subquery is the standard method for
+   extracting unknown data when no direct output channel exists.
+
+This connects to earlier labs (UNION-based extraction, WAF bypass) by showing
+a different extraction strategy entirely — used when the application gives no
+direct data back, only a behavioral signal.
