@@ -256,6 +256,7 @@ error, timing) is available is the first step before choosing an extraction
 method.
 
 
+
 ### Lab: SQL Injection with Verbose Error-Based Data Extraction
 Completed: [aaj ki date]
 
@@ -356,3 +357,63 @@ extraction (content and error-triggered), and verbose error-based direct
 leakage — giving a solid, well-rounded understanding of how the same core
 vulnerability class can be exploited very differently depending on what the
 application exposes to the attacker.
+
+
+
+### Lab: Blind SQL Injection with Time Delays
+Completed: [aaj ki date]
+
+## Objective
+Confirm the presence of a blind SQL injection vulnerability in a scenario
+where the application gives **no visible difference at all** — no content
+change, no error message — by using a database function that deliberately
+delays the response, and measuring that delay as the signal.
+
+## Steps Taken
+
+### 1. Located the injection point
+Intercepted the request containing the `TrackingId` cookie using Burp Suite
+and sent it to Repeater for testing.
+
+### 2. Injected a time-delay payload
+Modified the cookie value to:
+TrackingId=x'||pg_sleep(10)--
+- `||` concatenates the injected string with the rest of the SQL query
+  (PostgreSQL string concatenation operator)
+- `pg_sleep(10)` is a PostgreSQL function that pauses execution for 10
+  seconds before returning
+- `--` comments out the remainder of the original query to prevent syntax
+  errors
+
+### 3. Observed the delayed response
+Submitted the request and confirmed the application took exactly 10 seconds
+to respond — proving the injected SQL was executed by the database, even
+though the response content looked completely identical to a normal request.
+
+## What I Learned
+This lab introduced **time-based blind SQL injection**, the technique used
+when an application gives absolutely no observable difference between true
+and false conditions — no content change, no error, nothing to grep for.
+In that scenario, the only remaining signal is **how long the response takes**.
+
+Key ideas:
+
+1. **Time itself can be a data channel** — by wrapping `pg_sleep()` inside a
+   conditional (e.g. `CASE WHEN [condition] THEN pg_sleep(10) ELSE pg_sleep(0)
+   END`), an attacker can test true/false conditions purely by measuring
+   response time, then extend this into full character-by-character data
+   extraction (similar to the earlier blind SQLi labs, but using delay
+   instead of content or errors as the signal).
+2. **This is the "last resort" of blind SQLi techniques** — it's slower and
+   noisier than content-based or error-based extraction (each guess takes
+   several seconds instead of being instant), so it's typically only used
+   when no other signal is available.
+3. **Database fingerprinting continues to matter** — `pg_sleep()` is
+   PostgreSQL-specific, so confirming this payload worked also confirms the
+   backend database type, the same way `dual` and `TO_CHAR` confirmed Oracle
+   in an earlier lab.
+
+This completes a full picture of blind SQL injection signal types I've now
+practiced: content-based, error-based, and time-based — covering the three
+core ways an attacker can extract information when an application doesn't
+directly display query results.
