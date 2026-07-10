@@ -417,3 +417,82 @@ This completes a full picture of blind SQL injection signal types I've now
 practiced: content-based, error-based, and time-based — covering the three
 core ways an attacker can extract information when an application doesn't
 directly display query results.
+
+
+
+### Lab: Blind SQL Injection with Time Delays and Information Retrieval
+Completed: [aaj ki date]
+
+## Objective
+Extend basic time-based blind SQL injection into a full data extraction
+technique — using response delay (instead of content or errors) as the
+true/false signal to recover the administrator's complete password,
+character by character.
+
+## Steps Taken
+
+### 1. Confirmed conditional time-based injection works
+Tested a true condition:
+TrackingId=x';SELECT CASE WHEN (1=1) THEN pg_sleep(10) ELSE pg_sleep(0) END--
+Response took 10 seconds. Tested a false condition:
+TrackingId=x';SELECT CASE WHEN (1=2) THEN pg_sleep(10) ELSE pg_sleep(0) END--
+Response returned immediately — confirming the `CASE` statement's delay could
+reliably signal true (10s delay) vs. false (no delay), giving a controllable
+covert channel purely through timing.
+
+### 2. Confirmed the administrator account exists
+TrackingId=x';SELECT CASE WHEN (username='administrator') THEN pg_sleep(10) ELSE pg_sleep(0) END FROM users--
+The 10-second delay confirmed the `administrator` user exists in the `users`
+table.
+
+### 3. Determined password length
+Incremented a length check the same way as in the earlier boolean-blind lab,
+but using delay instead of content/error as the signal:
+TrackingId=x';SELECT CASE WHEN (username='administrator' AND LENGTH(password)>N) THEN pg_sleep(10) ELSE pg_sleep(0) END FROM users--
+Increased N via Burp Repeater until the delay stopped occurring, confirming
+a password length of 20 characters.
+
+### 4. Extracted the password using Burp Intruder
+Automated character-by-character extraction using `SUBSTRING()` inside the
+same conditional time-delay structure:
+TrackingId=x';SELECT CASE WHEN (username='administrator' AND SUBSTRING(password,1,1)='§a§') THEN pg_sleep(10) ELSE pg_sleep(0) END FROM users--
+- Set a payload position marker on the guessed character
+- Configured payloads: lowercase a-z and 0-9
+- **Critically**, set the Intruder attack's **Resource Pool** to a maximum
+  of 1 concurrent request — since this technique relies on precisely
+  measuring response time, running multiple requests in parallel would
+  distort timing results and make it impossible to reliably detect the
+  10-second delay
+- Instead of grep-matching text or checking status codes (as in earlier
+  labs), identified the correct character by checking the **"Response
+  received"** column in Intruder's results — one payload per position would
+  show a value around 10,000ms, while all incorrect guesses returned
+  quickly
+- Repeated the attack for each character offset (1 → 20) to reconstruct the
+  full password
+
+### 5. Logged in as administrator
+Used the recovered password to log in and solve the lab.
+
+## What I Learned
+This lab completed the full time-based blind SQL injection technique,
+building directly on the simpler delay-confirmation lab done earlier:
+
+1. **Time delay works exactly like the other blind signals** — the same
+   CASE-based conditional logic used in error-based and content-based blind
+   SQLi applies here; only the "signal" changes (delay instead of content
+   or error).
+2. **Concurrency must be controlled for timing attacks** — this is a detail
+   unique to time-based extraction; content-based and error-based blind SQLi
+   don't require single-threaded requests, but time-based attacks do, since
+   parallel requests can interfere with accurate delay measurement.
+3. **This technique is the slowest but most universally applicable** — it
+   works even when an application shows absolutely no visible difference in
+   its response, making it the fallback when neither content-based nor
+   error-based signals are available.
+
+Combined with the earlier labs, I've now practiced all four major blind SQL
+injection extraction strategies: UNION-based, content-based blind, error-based
+blind, and time-based blind — giving a complete, practical understanding of
+how SQL injection can be exploited across a wide range of application
+behaviors, from fully verbose to completely silent.
