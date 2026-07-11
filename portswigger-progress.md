@@ -92,3 +92,66 @@ parameterized queries matter everywhere user input touches a database,
 not just in search/filter functions but in login systems specifically,
 where the consequences of a bypass are especially severe (full account
 takeover).
+
+
+
+## Lab 3: SQL Injection — UNION Attack (Database Version, Oracle)
+
+Topic: SQL Injection | Difficulty: Practitioner
+
+## Vulnerability
+Same product category filter as Lab 1, vulnerable to SQL injection. This time,
+instead of just bypassing a filter, the goal was to use a UNION attack to
+pull additional data (the database version) directly into the visible
+application output.
+
+## Background: What is a UNION Attack?
+A UNION attack combines the results of the original query with results from
+an injected query, using SQL's `UNION` keyword. For this to work, two
+conditions must be met:
+- The injected query must return the **same number of columns** as the
+  original query
+- The data types of each column must be compatible between the original
+  and injected query (in this case, both needed to be text)
+
+## Steps Taken
+
+### Step 1: Determine the number of columns
+Tested the number of columns being returned by the original query, confirming
+it returns exactly 2 columns.
+
+### Step 2: Confirm both columns accept text data
+Sent the following payload in the `category` parameter to verify both
+columns could hold text values:
+'+UNION+SELECT+'abc','def'+FROM+dual--
+Note: Oracle requires every SELECT statement to specify a table using FROM —
+unlike some other databases. Since this attack doesn't need to pull from a
+real table, Oracle's built-in dummy table `dual` was used to satisfy this
+requirement.
+
+The response confirmed both columns rendered as text successfully.
+
+### Step 3: Retrieve the database version
+Sent the final payload:
+'+UNION+SELECT+BANNER,+NULL+FROM+v$version--
+`v$version` is an Oracle system view that stores database version
+information, and `BANNER` is the column containing the readable version
+string. `NULL` was used for the second column since only one piece of
+real data (the version string) was needed, and the query still required a
+matching second column.
+
+## Result
+Successfully retrieved and displayed the Oracle database version string
+through the application's product listing page.
+
+## What I Learned
+This lab introduced UNION-based SQL injection, a technique that goes beyond
+bypassing logic (like Labs 1 and 2) and instead directly extracts arbitrary
+data from the database by appending a second query. It also highlighted an
+important database-specific detail: Oracle requires a FROM clause on every
+SELECT, unlike MySQL for example, which means injection payloads aren't
+always portable across different database engines — attackers (and testers)
+need to identify the underlying database type first to craft a working
+UNION payload. Using built-in system tables/views like `dual` and `v$version`
+shows how attackers can pull metadata about the environment itself, which is
+often a stepping stone toward more targeted, higher-impact attacks.
