@@ -205,3 +205,63 @@ comment syntax (`#` vs `--`). In a real assessment, correctly fingerprinting
 the database type early on is essential, since using the wrong syntax will
 simply cause the injection to fail even if the vulnerability itself is
 exploitable.
+
+
+
+## Lab 5: SQL Injection — Full Database Enumeration & Credential Extraction
+
+Topic: SQL Injection | Difficulty: Practitioner
+
+## Vulnerability
+Same UNION-injectable product category filter as previous labs. This time,
+the goal was to go beyond retrieving a single value (like the DB version)
+and instead enumerate the entire database structure to locate and extract
+real user credentials, then use them to log in as administrator.
+
+## Steps Taken
+
+### Step 1: Confirm column count and text compatibility
+'+UNION+SELECT+'abc','def'--
+Confirmed 2 columns, both text-compatible — same baseline check as before.
+
+### Step 2: List all tables in the database
+'+UNION+SELECT+table_name,+NULL+FROM+information_schema.tables--
+`information_schema.tables` is a built-in system view (available on
+non-Oracle databases like MySQL/PostgreSQL/MSSQL) that lists every table
+in the database. This returned all table names, including one clearly
+related to user accounts (e.g. `users_abcdef`).
+
+### Step 3: List the columns within the identified table
+'+UNION+SELECT+column_name,+NULL+FROM+information_schema.columns+WHERE+table_name='users_abcdef'--
+`information_schema.columns` lists column names for a given table. This
+revealed the specific column names holding usernames and passwords
+(e.g. `username_abcdef`, `password_abcdef`).
+
+### Step 4: Extract the actual usernames and passwords
+'+UNION+SELECT+username_abcdef,+password_abcdef+FROM+users_abcdef--
+This returned the full list of usernames and their corresponding
+passwords directly in the application's response.
+
+### Step 5: Log in as administrator
+Located the `administrator` entry in the extracted data, retrieved the
+associated password, and used it to log into the application through the
+normal login form.
+
+## Result
+Successfully enumerated the database's internal structure and extracted
+live credentials, then used them to log in as the administrator account.
+
+## What I Learned
+This lab combined everything from the previous UNION-based labs into a
+complete, realistic attack chain: instead of guessing table/column names,
+`information_schema` provides a standardized way (on non-Oracle databases)
+to map out a database's entire structure from the outside — table names,
+column names, and then the data itself. This is a significant escalation
+from earlier labs: rather than bypassing a single check or reading one
+value, this demonstrates how a single injection point can lead to full
+credential exposure across an entire application, since password data was
+stored and retrieved without any indication of hashing or encryption in
+this exercise. In a real system, this reinforces why credentials should
+never be retrievable this easily even if an injection point exists (e.g.,
+proper hashing, least-privilege database accounts, and input
+parameterization would all reduce the impact of a flaw like this).
