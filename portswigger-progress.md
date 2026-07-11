@@ -155,3 +155,53 @@ need to identify the underlying database type first to craft a working
 UNION payload. Using built-in system tables/views like `dual` and `v$version`
 shows how attackers can pull metadata about the environment itself, which is
 often a stepping stone toward more targeted, higher-impact attacks.
+
+
+
+## Lab 4: SQL Injection — UNION Attack (Database Version, MySQL/MSSQL)
+
+Topic: SQL Injection | Difficulty: Practitioner
+
+## Vulnerability
+Same product category filter injection point as previous labs, again
+solvable using a UNION attack to retrieve the database version string.
+This lab's target database uses different syntax conventions than the
+Oracle lab before it, requiring a slightly different payload approach.
+
+## Steps Taken
+
+### Step 1: Confirm column count and text-compatible columns
+Sent the following payload in the `category` parameter:
+'+UNION+SELECT+'abc','def'#
+The response confirmed the query returns exactly 2 columns, both capable
+of holding text data.
+
+### Step 2: Retrieve the database version
+Sent the final payload:
+'+UNION+SELECT+@@version,+NULL#
+`@@version` is a built-in system variable (used in MySQL and Microsoft SQL
+Server) that returns the database version string directly, without needing
+to query a system table like Oracle's `v$version`. `NULL` was used for the
+second column to match the required column count.
+
+## Result
+Successfully retrieved and displayed the database version string through
+the application's product listing page.
+
+## Key Difference from Previous Lab (Oracle)
+| | Oracle | MySQL / MSSQL |
+|---|---|---|
+| Comment syntax | `--` | `#` |
+| Version retrieval | `SELECT BANNER FROM v$version` | `SELECT @@version` |
+| FROM requirement | Mandatory even for constant selects (`FROM dual`) | Not required — can `SELECT @@version` directly |
+
+## What I Learned
+This lab reinforced that SQL injection payloads are not universal — the
+same underlying UNION attack technique needs to be adapted based on the
+specific database engine being targeted. Oracle's stricter syntax (requiring
+FROM on every SELECT, and pulling version info from a system view) contrasts
+with MySQL/MSSQL's simpler built-in variable (`@@version`) and different
+comment syntax (`#` vs `--`). In a real assessment, correctly fingerprinting
+the database type early on is essential, since using the wrong syntax will
+simply cause the injection to fail even if the vulnerability itself is
+exploitable.
