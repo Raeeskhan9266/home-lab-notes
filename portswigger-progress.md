@@ -265,3 +265,68 @@ this exercise. In a real system, this reinforces why credentials should
 never be retrievable this easily even if an injection point exists (e.g.,
 proper hashing, least-privilege database accounts, and input
 parameterization would all reduce the impact of a flaw like this).
+
+
+
+## Lab 6: SQL Injection :_ Full Database Enumeration & Credential Extraction (Oracle)
+
+Topic: SQL Injection | Difficulty: Practitioner
+
+## Vulnerability
+Same attack goal as Lab 5 (enumerate database structure, extract
+credentials, log in as administrator) but against an Oracle database,
+requiring Oracle-specific system views and syntax instead of the
+`information_schema` approach used on MySQL/PostgreSQL/MSSQL.
+
+## Steps Taken
+
+### Step 1: Confirm column count and text compatibility
+'+UNION+SELECT+'abc','def'+FROM+dual--
+Same as previous Oracle lab — used the `dual` dummy table since Oracle
+requires a FROM clause on every SELECT statement.
+
+### Step 2: List all tables in the database
+'+UNION+SELECT+table_name,NULL+FROM+all_tables--
+`all_tables` is Oracle's equivalent of `information_schema.tables` — a
+built-in system view listing every table accessible to the current user.
+This revealed a table clearly related to user credentials (e.g.
+`USERS_ABCDEF`).
+
+### Step 3: List the columns within the identified table
+'+UNION+SELECT+column_name,NULL+FROM+all_tab_columns+WHERE+table_name='USERS_ABCDEF'--
+`all_tab_columns` is Oracle's equivalent of `information_schema.columns`,
+listing column names for a specified table. This revealed the username
+and password column names.
+
+### Step 4: Extract usernames and passwords
+'+UNION+SELECT+USERNAME_ABCDEF,+PASSWORD_ABCDEF+FROM+USERS_ABCDEF--
+Retrieved the full list of usernames and passwords directly in the
+application's response.
+
+### Step 5: Log in as administrator
+Located the administrator's password in the extracted data and logged in
+successfully through the normal login form.
+
+## Result
+Successfully enumerated the Oracle database's structure and extracted live
+credentials, gaining administrator access.
+
+## Comparison: Oracle vs Non-Oracle (MySQL/PostgreSQL/MSSQL) Enumeration
+| Purpose | Oracle | MySQL / PostgreSQL / MSSQL |
+|---|---|---|
+| List tables | `all_tables` | `information_schema.tables` |
+| List columns | `all_tab_columns` | `information_schema.columns` |
+| Dummy table requirement | Required (`dual`) | Not required |
+| Comment syntax | `--` | `--` or `#` (varies) |
+
+## What I Learned
+This lab confirmed that the *methodology* of a UNION-based enumeration
+attack — list tables, list columns, extract data — stays consistent across
+database engines, but the exact system views and required syntax change
+significantly depending on the target database. Having now done this on
+both Oracle and non-Oracle databases (Lab 5 and this lab), I can recognize
+that identifying the database type early in an assessment is a critical
+step, since it determines which system tables and syntax will actually
+work. This mirrors real-world penetration testing, where tools like
+sqlmap automate this fingerprinting step, but understanding it manually
+builds a much stronger foundation than relying on tooling alone.
