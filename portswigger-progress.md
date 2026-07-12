@@ -480,4 +480,339 @@ the full UNION-based SQL injection attack chain into one repeatable
 methodology I can apply to any similar injection point.
 
 
+## Lab 10: SQL Injection — UNION Attack, Retrieving Multiple Values in a Single Column
+
+Topic: SQL Injection | Difficulty: Practitioner
+
+## Vulnerability
+Same product category filter injection point. Unlike Lab 9 (where both
+columns accepted text, allowing username and password to go into separate
+columns), this lab's query only had **one** text-compatible column — the
+other column held a different data type (e.g. numeric). This required
+combining both pieces of data into a single column using string
+concatenation.
+
+## Steps Taken
+
+### Step 1: Confirm column count and identify which column accepts text
+'+UNION+SELECT+NULL,'abc'--
+This confirmed the query returns 2 columns, but only the second column
+accepts text data — the first had to remain NULL to avoid a type error.
+
+### Step 2: Concatenate username and password into the single text column
+'+UNION+SELECT+NULL,username||'~'||password+FROM+users--
+`||` is the string concatenation operator (used in Oracle/PostgreSQL-style
+SQL). This combined the `username` and `password` values into one string,
+separated by a `~` character, and placed the result into the only column
+that could actually display text.
+
+### Step 3: Extract and parse the credentials
+The application's response showed each row as a single combined string
+(e.g. `administrator~s3cr3tpass`), which could then be split on the `~`
+separator to read the username and password individually.
+
+## Why This Technique Was Needed
+Since only one column accepted text, trying to place `username` and
+`password` into two separate columns directly (as in Lab 9) would have
+failed with a data type error. Concatenating both values into a single
+string — using a clearly distinguishable separator — worked around this
+column-type limitation while still making both pieces of data readable in
+the output.
+
+## Result
+Successfully retrieved all usernames and passwords (combined into a single
+column) and used the extracted administrator credentials to log in.
+
+## What I Learned
+This lab showed that UNION-based data extraction isn't always
+straightforward when the number of usable text columns is limited — the
+concatenation operator (`||`) becomes essential when multiple pieces of
+data need to be exfiltrated through fewer available text columns than
+data points needed. This is a realistic constraint, since many real-world
+queries won't conveniently have one text column per piece of data you want
+to extract, making string concatenation a core technique for adapting a
+UNION attack to whatever column structure is actually available.
+
+
+
+## Lab 11: Blind SQL Injection with Conditional Responses
+
+Topic: SQL Injection (Blind) | Difficulty: Practitioner
+
+## Vulnerability
+The application uses a `TrackingId` cookie value directly inside a SQL query
+for analytics purposes. Unlike previous labs, the query's actual results
+are never shown, and no error messages appear either. The only signal
+available is whether a "Welcome back" message appears on the page — this
+message shows up only when the injected condition evaluates to true.
+
+## What Makes This "Blind"
+In earlier labs (UNION attacks), the database's actual query results were
+visible directly in the response, making data extraction straightforward.
+Here, there's no visible output at all — instead, the attacker must ask
+the database a series of true/false questions and infer the answer purely
+from a behavioral difference (message present vs. absent). This requires
+extracting data one bit/character at a time rather than all at once.
+
+## Steps Taken
+
+### Step 1: Confirm the injection point responds to boolean logic
+Modified the `TrackingId` cookie to:
+xyz' AND '1'='1
+"Welcome back" appeared — confirming a true condition shows the message.
+Then tested:
+xyz' AND '1'='2
+"Welcome back" disappeared — confirming a false condition hides it. This
+established a reliable true/false signal to build the rest of the attack on.
+
+### Step 2: Confirm the `users` table exists
+xyz' AND (SELECT 'a' FROM users LIMIT 1)='a
+True result confirmed a `users` table exists in the database.
+
+### Step 3: Confirm the `administrator` user exists
+xyz' AND (SELECT 'a' FROM users WHERE username='administrator')='a
+True result confirmed this specific user exists.
+
+### Step 4: Determine the password length
+Sent an incrementing series of requests:
+xyz' AND (SELECT 'a' FROM users WHERE username='administrator' AND LENGTH(password)>1)='a
+xyz' AND (SELECT 'a' FROM users WHERE username='administrator' AND LENGTH(password)>2)='a
+...continuing until the condition flipped from true to false, revealing the
+exact password length (20 characters) at the point where the "greater
+than" condition stopped holding.
+
+### Step 5: Extract the password character by character using Burp Intruder
+Since testing every character at every position manually would take far
+too many requests, used Burp Intruder to automate it:
+xyz' AND (SELECT SUBSTRING(password,1,1) FROM users WHERE username='administrator')='§a§
+- `SUBSTRING(password,1,1)` extracts one character from a specific
+  position in the password
+- Payload markers (`§a§`) were placed around the test character so
+  Intruder could cycle through every lowercase letter and digit at that
+  position
+- Configured Intruder's payload list to include `a-z` and `0-9`
+- Used Intruder's "Grep - Match" setting to flag which responses contained
+  "Welcome back" — the response with a match indicated the correct
+  character for that position
+
+### Step 6: Repeat for every character position
+Changed the offset in `SUBSTRING(password, X, 1)` from 1 up through 20
+(the confirmed password length), re-running the Intruder attack at each
+position and recording the matching character each time, eventually
+reconstructing the full password.
+
+### Step 7: Log in
+Used the fully reconstructed password to log in as `administrator` through
+the normal login page.
+
+## Result
+Successfully extracted the administrator's full password character-by-
+character using only true/false behavioral signals, with no direct data
+output from the database, and used it to log in.
+
+## What I Learned
+This lab was a significant step up from the UNION-based labs (1–10) because
+it required inferring data indirectly rather than reading it directly from
+a response. Blind SQL injection reflects a more realistic scenario for many
+real-world applications, where query results are never directly displayed
+to the user. It also introduced the practical need for automation (Burp
+Intruder) — while boolean testing is simple to do manually for one or two
+checks, extracting a full password character-by-character across every
+position and every possible character would be impractical by hand. This
+lab tied together conditional logic (AND, boolean true/false), string
+functions (LENGTH, SUBSTRING), and tooling (Intruder with grep-match) into
+a single, realistic end-to-end attack — genuinely one of the most valuable
+labs so far in building a complete understanding of SQL injection as an
+attack class.
+
+
+
+## Lab 12: Blind SQL Injection with Conditional Errors
+
+Topic: SQL Injection (Blind) | Difficulty: Practitioner
+
+## Vulnerability
+Same tracking cookie injection point as Lab 11, but this application gives
+no visible behavioral difference (like a "Welcome back" message) at all —
+the response looks identical regardless of whether the injected condition
+is true or false. The only signal available is whether the query causes
+a database error, which surfaces as a custom error message and an HTTP 500
+status code.
+
+## What Makes This Different from Lab 11
+Lab 11 (conditional responses) relied on a visible content difference
+("Welcome back" present/absent). This lab has no such content difference —
+so the attack had to deliberately *trigger* an error under a chosen
+condition, using the presence or absence of that error as the true/false
+signal instead of any visible message.
+
+## Steps Taken
+
+### Step 1: Confirm the cookie value affects query syntax
+xyz'
+A single quote caused an error (broken SQL syntax). Adding a second quote:
+xyz''
+made the error disappear — confirming the input was being inserted
+directly into a SQL query without sanitization.
+
+### Step 2: Confirm the injection is interpreted as SQL (not some other error type)
+Tried building a valid subquery:
+xyz'||(SELECT '')||'
+Still errored. Since Oracle requires a FROM clause on every SELECT, adjusted to:
+xyz'||(SELECT '' FROM dual)||'
+No error this time — confirming both that the injection is genuinely SQL,
+and that the backend database is Oracle (based on needing `dual`).
+
+### Step 3: Confirm error-based signal reliability
+Queried a non-existent table:
+xyz'||(SELECT '' FROM not-a-real-table)||'
+This correctly produced an error, confirming the application reliably
+throws errors for invalid SQL — a dependable true/false channel.
+
+### Step 4: Confirm the `users` table exists
+xyz'||(SELECT '' FROM users WHERE ROWNUM = 1)||'
+No error returned, confirming the `users` table exists. `ROWNUM = 1` was
+needed to prevent the subquery from returning multiple rows, which would
+have broken the string concatenation.
+
+### Step 5: Build a conditional error trigger using CASE + divide-by-zero
+xyz'||(SELECT CASE WHEN (1=1) THEN TO_CHAR(1/0) ELSE '' END FROM dual)||'
+This intentionally causes a divide-by-zero error only when the CASE
+condition is true. Testing `1=1` produced an error (condition true);
+testing `1=2` produced no error (condition false) — establishing a
+reliable conditional error trigger to test any true/false condition.
+
+### Step 6: Confirm the administrator user exists
+xyz'||(SELECT CASE WHEN (1=1) THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator')||'
+Error occurred, confirming this specific user exists.
+
+### Step 7: Determine password length
+Sent an incrementing series:
+xyz'||(SELECT CASE WHEN LENGTH(password)>1 THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator')||'
+...continuing upward until the error stopped occurring, revealing the
+password length (20 characters).
+
+### Step 8: Extract the password character by character using Burp Intruder
+xyz'||(SELECT CASE WHEN SUBSTR(password,1,1)='§a§' THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator')||'
+- Payload markers placed around the test character
+- Payload list configured with `a-z` and `0-9`
+- Instead of grep-matching text (as in Lab 11), filtered Intruder results
+  by **HTTP status code**: a `500` status indicated the error fired (correct
+  character), while `200` meant no error (incorrect character)
+
+### Step 9: Repeat for every character position
+Changed the offset in `SUBSTR(password, X, 1)` from 1 through 20, re-running
+Intruder at each position and recording the character that produced a 500
+status, reconstructing the full password.
+
+### Step 10: Log in
+Used the reconstructed password to log in as `administrator`.
+
+## Result
+Successfully extracted the administrator's full password using only the
+presence or absence of a database error (no visible content difference at
+all), and used it to log in.
+
+## What I Learned
+This lab pushed blind SQL injection a step further than Lab 11: instead of
+relying on an existing visible signal (like a welcome message), it required
+deliberately engineering a conditional error using `CASE WHEN ... THEN
+TO_CHAR(1/0) ELSE ''` — turning a divide-by-zero error into an intentional
+true/false signal. This is a more broadly applicable technique in real-world
+testing, since many applications don't have an obvious content difference
+to exploit, but almost all backend databases will throw some kind of
+detectable error under the right conditions. Combined with Lab 11, I now
+have a solid understanding of both major blind SQLi sub-types — conditional
+responses and conditional errors — which together cover the majority of
+real-world blind injection scenarios.
+
+
+## Lab 13: Visible Error-Based SQL Injection
+Completed: [aaj ki date]
+Topic: SQL Injection (Blind) | Difficulty: Practitioner
+
+## Vulnerability
+Same `TrackingId` cookie injection point pattern as Labs 11 and 12, but this
+application returns a verbose, detailed database error message directly in
+the response — including the full SQL query text and specific database
+error details. This meant data could be leaked directly through the error
+message content itself, rather than just inferring true/false from whether
+an error occurred.
+
+## What Makes This Different from Labs 11 & 12
+Labs 11 and 12 only revealed a true/false signal (message present/absent,
+or error present/absent) — actual data still had to be extracted one
+character at a time using SUBSTRING/SUBSTR and brute-forced with Intruder.
+This lab's errors are verbose enough to leak the *actual value* directly
+inside the error text, making extraction dramatically faster once the
+right technique is found.
+
+## Steps Taken
+
+### Step 1: Trigger a verbose error
+Appended a single quote to the cookie:
+TrackingId=ogAZZfxtOKUELbuJ'
+The response returned a detailed error message disclosing the full SQL
+query, confirming the injection point sits inside a single-quoted string.
+
+### Step 2: Fix the syntax to confirm valid injection
+TrackingId=ogAZZfxtOKUELbuJ'--
+Commenting out the rest of the query removed the error, confirming a
+syntactically valid injection.
+
+### Step 3: Build a working CAST-based condition
+TrackingId=ogAZZfxtOKUELbuJ' AND CAST((SELECT 1) AS int)--
+This caused a new error stating the AND condition must be a boolean
+expression. Adjusted to:
+TrackingId=ogAZZfxtOKUELbuJ' AND 1=CAST((SELECT 1) AS int)--
+No error — confirming a valid boolean comparison using CAST.
+
+### Step 4: Attempt to pull real data (hit a character limit issue)
+TrackingId=ogAZZfxtOKUELbuJ' AND 1=CAST((SELECT username FROM users) AS int)--
+This triggered the original syntax error again — not because the logic was
+wrong, but because the cookie had a character limit, truncating the
+payload and cutting off the trailing comment characters.
+
+### Step 5: Free up space by shortening the cookie prefix
+Removed the original tracking ID value entirely:
+TrackingId=' AND 1=CAST((SELECT username FROM users) AS int)--
+This produced a new, different database-generated error, indicating the
+query now ran — but failed because the subquery returned more than one row.
+
+### Step 6: Restrict the subquery to a single row
+TrackingId=' AND 1=CAST((SELECT username FROM users LIMIT 1) AS int)--
+
+### Step 7: Read the leaked value directly from the error message
+The response's error text read:
+ERROR: invalid input syntax for type integer: "administrator"
+Casting a text value (a username) to an integer type is invalid — and the
+resulting error message conveniently includes the exact text value it
+failed to convert. This leaked the first username in the table directly
+inside the error, with no need for character-by-character brute forcing.
+
+### Step 8: Repeat the technique to leak the password
+TrackingId=' AND 1=CAST((SELECT password FROM users LIMIT 1) AS int)--
+The error message returned the administrator's actual password in plain
+text, embedded in the CAST failure message.
+
+### Step 9: Log in
+Used the leaked password to log in as `administrator`.
+
+## Result
+Successfully leaked both a username and a password directly from verbose
+database error messages, without needing to brute-force individual
+characters, and logged in as administrator.
+
+## What I Learned
+This lab introduced a much more efficient blind SQLi technique: instead of
+asking the database many true/false questions (Labs 11 & 12), casting an
+incompatible data type (text to int) causes the database to include the
+offending value directly in its error message — leaking full strings in a
+single request. This is only possible when an application exposes overly
+detailed/verbose error messages, which is itself a real security weakness
+(proper error handling should show generic messages to users while logging
+details server-side only). This also reinforced a very practical, non-obvious
+constraint: input length limits (like a cookie size cap) can break an
+otherwise-correct payload, requiring the injection to be restructured (e.g.
+dropping the original tracking value) to fit within the available space.
 
