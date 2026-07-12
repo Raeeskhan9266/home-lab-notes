@@ -330,3 +330,154 @@ step, since it determines which system tables and syntax will actually
 work. This mirrors real-world penetration testing, where tools like
 sqlmap automate this fingerprinting step, but understanding it manually
 builds a much stronger foundation than relying on tooling alone.
+
+
+
+## Lab 7: SQL Injection :_ Determining Number of Columns (UNION Attack Setup)
+
+Topic: SQL Injection | Difficulty: Practitioner
+
+## Vulnerability
+Same product category filter injection point as previous labs. This lab
+focused specifically on the foundational first step of any UNION attack:
+figuring out exactly how many columns the original query returns, since a
+UNION SELECT must match that number exactly or the database throws an error.
+
+## Steps Taken
+
+### Step 1: Try with a single NULL value
+'+UNION+SELECT+NULL--
+This caused an error, indicating the original query returns more than one
+column.
+
+### Step 2: Add a second NULL value
+'+UNION+SELECT+NULL,NULL--
+The error disappeared and the response returned successfully, showing the
+injected row (with NULL values) had matched the query's column count.
+
+### Step 3: Confirm the column count
+Since 2 NULLs resolved the error and produced valid output, this confirmed
+the original query returns exactly 2 columns.
+
+## Why NULL is Used for This Technique
+`NULL` is used instead of arbitrary text or numbers because NULL is valid
+for (almost) any data type in SQL — it doesn't matter if a column expects
+text, a number, or a date, NULL will satisfy the type requirement. This
+means the column-count test won't fail due to a data type mismatch, only
+due to an incorrect column count, isolating exactly what's being tested.
+
+## Result
+Successfully determined the query returns 2 columns by incrementally
+adding NULL values until the error disappeared.
+
+## What I Learned
+This lab isolated and explained a step I had already been performing
+"blindly" in earlier labs (Labs 3-6) without fully understanding why NULL
+values were used as placeholders. Now I understand that this trial-and-error
+approach (adding one NULL at a time until the error clears) is the standard,
+reliable method for determining column count when the number of columns
+isn't already known — an essential first step before attempting any UNION
+attack, since getting the column count wrong causes the entire injected
+query to fail regardless of how correct the rest of the payload is.
+
+
+
+## Lab 8: SQL Injection — Finding a Column Containing Text (UNION Attack Setup)
+
+Topic: SQL Injection | Difficulty: Practitioner
+
+## Vulnerability
+Same product category filter injection point. This lab covered the second
+foundational step of a UNION attack: after confirming the column count,
+identifying *which specific column(s)* can hold text/string data — needed
+because you can only extract readable text data (like table names or
+credentials) through columns that accept string values.
+
+## Steps Taken
+
+### Step 1: Confirm column count
+'+UNION+SELECT+NULL,NULL,NULL--
+Confirmed the query returns 3 columns (no error, valid response returned).
+
+### Step 2: Test each column individually for text compatibility
+Replaced one NULL at a time with the random string value provided by the
+lab, testing each position:
+'+UNION+SELECT+'abcdef',NULL,NULL--
+If this caused a database error, it meant that particular column doesn't
+accept text data (e.g., it might be an integer or date type). Moved the
+test string to the next position and repeated:
+'+UNION+SELECT+NULL,'abcdef',NULL--
+Continued until the string appeared successfully in the application's
+response without triggering an error.
+
+## Why This Step Matters
+Not every column in a database table is a text/string type — some are
+integers, dates, or other types that will throw a type-mismatch error if
+you try to insert a string into them via UNION SELECT. Since the actual
+attack goal (e.g., extracting usernames, passwords, table names) requires
+placing readable text into the response, you must first identify a column
+position that will actually accept and display that text without breaking
+the query.
+
+## Result
+Successfully identified which column position accepted the string value,
+confirming it could be used to display extracted text data (like
+credentials or table/column names) in later stages of a real UNION attack.
+
+## What I Learned
+This lab isolated the second essential UNION attack setup step — after
+knowing "how many columns" (Lab 7), you also need to know "which columns
+can carry text." Together, these two labs form the standard reconnaissance
+process before attempting any real data extraction: determine column
+count → determine text-compatible columns → then inject the actual target
+data (table names, column names, credentials) into that confirmed text
+column, exactly as done in Labs 3 through 6.
+
+
+
+## Lab 9: SQL Injection — UNION Attack, Retrieving Data from a Known Table
+
+Topic: SQL Injection | Difficulty: Practitioner
+
+## Vulnerability
+Same product category filter injection point as previous labs. Unlike Labs
+5 and 6 (where the table/column names had to be discovered first via
+`information_schema` or Oracle's `all_tables`/`all_tab_columns`), this lab
+provided the table and column names directly (`users` table with `username`
+and `password` columns), focusing purely on constructing the final
+extraction payload.
+
+## Steps Taken
+
+### Step 1: Confirm column count and text compatibility
+'+UNION+SELECT+'abc','def'--
+Confirmed 2 columns, both text-compatible.
+
+### Step 2: Extract usernames and passwords directly
+'+UNION+SELECT+username,+password+FROM+users--
+Since the table and column names were already known, this payload pulled
+the data straight from the `users` table and displayed it in the
+application's response.
+
+### Step 3: Log in as administrator
+Located the administrator's password in the extracted results and used it
+to log in through the normal login form.
+
+## Result
+Successfully retrieved all usernames and passwords from the `users` table
+and logged in as the administrator using the extracted credentials.
+
+## What I Learned
+This lab reinforced that the core UNION attack skeleton (confirm column
+count → confirm text-compatible columns → inject the final SELECT to pull
+real data) stays exactly the same whether the target table/column names are
+already known or need to be discovered first via schema enumeration. Having
+now done both versions (Labs 5/6 with full discovery, and this lab with
+known names), I can see clearly that the discovery step is really just an
+extra round of the same technique — using UNION SELECT to pull metadata
+(table/column names) instead of the final target data. This consolidates
+the full UNION-based SQL injection attack chain into one repeatable
+methodology I can apply to any similar injection point.
+
+
+
