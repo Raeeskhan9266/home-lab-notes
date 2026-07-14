@@ -104,3 +104,79 @@ every user who views that page — for example, stealing session cookies
 from many victims simultaneously, rather than just one targeted individual.
 This is why stored XSS is generally treated as more severe than reflected
 XSS in vulnerability assessments.
+
+
+## Lab 3: DOM XSS in document.write Sink Using Source location.search
+
+Topic: Cross-Site Scripting (DOM-based) | Difficulty: Apprentice
+
+## Vulnerability
+This lab's search tracking functionality uses client-side JavaScript to
+take data directly from the URL (`location.search`, the query string
+portion of the URL) and pass it into `document.write()`, which writes
+content directly into the page's HTML. Since this happens entirely in the
+browser via JavaScript — with no server involvement in processing that
+specific data — this is a DOM-based vulnerability rather than a
+server-side one.
+
+## What Makes This Different from Labs 1 & 2 (Reflected/Stored)
+- **Reflected/Stored XSS (Labs 1–2):** the server itself inserts
+  unsanitized user input into the HTML response
+- **DOM-based XSS (this lab):** the server's HTML response is safe as
+  delivered — the vulnerability exists entirely in client-side JavaScript,
+  which reads attacker-controllable data (a "source") and writes it
+  somewhere dangerous (a "sink") without sanitization
+
+## Source and Sink Concept
+- **Source** = where attacker-controllable data enters the JavaScript
+  (here, `location.search` — the query string of the URL, fully
+  controllable by crafting a malicious link)
+- **Sink** = where that data ends up being used dangerously (here,
+  `document.write()`, which writes raw content directly into the page's HTML)
+
+## Steps Taken
+
+### Step 1: Probe how input is reflected
+Entered a random alphanumeric test string into the search box, then
+right-clicked the resulting page and used "Inspect Element" to examine
+where that string landed in the actual HTML.
+
+### Step 2: Identify the injection context
+Found that the test string had been placed inside an `img` tag's `src`
+attribute (e.g. `<img src="[my test string]">`) — meaning a simple
+`<script>` tag (like in Labs 1–2) would not work here directly, since the
+injection point sits inside an existing HTML attribute, not in a place
+where a new tag can just be opened freely.
+
+### Step 3: Break out of the attribute and inject a new element
+Used the following payload in the search box:
+"><svg onload=alert(1)>
+
+## How the Payload Works
+- `"` closes the `img` tag's `src` attribute value
+- `>` closes the `img` tag itself, ending it early
+- `<svg onload=alert(1)>` injects a brand new HTML element (an SVG image
+  tag) that includes an `onload` event handler — this handler
+  automatically fires the moment the browser finishes loading the SVG
+  element, executing `alert(1)` without needing a `<script>` tag at all
+
+This technique is necessary specifically because the injection point was
+inside an attribute value, not free-standing HTML — the attacker first has
+to "escape" out of that attribute/tag context before injecting anything new.
+
+## Result
+Successfully broke out of the `img` attribute context and triggered
+`alert(1)` using an SVG element with an `onload` event handler, solving
+the lab.
+
+## What I Learned
+This lab introduced two important concepts beyond the basic `<script>`
+injection from Labs 1–2: first, the source/sink model for understanding
+DOM-based XSS (data flows from an attacker-controllable source through
+JavaScript into a dangerous sink, entirely client-side); and second, that
+successful XSS often requires first identifying the exact HTML context
+the payload lands in (an attribute vs. free text) before choosing the
+right technique to escape that context. Event handlers like `onload` are
+a critical alternative to `<script>` tags — this becomes especially
+important in later labs where `<script>` tags or certain characters are
+likely to be filtered or blocked.
