@@ -235,3 +235,65 @@ extend to event handlers on other HTML elements. This means understanding
 which sink is being used matters directly for choosing a working
 payload: document.write generally allows script tags to execute, while
 innerHTML does not, requiring an event-handler-based workaround instead.
+
+
+
+## Lab 5: DOM XSS in jQuery Anchor href Attribute Sink Using location.search Source
+
+Topic: Cross-Site Scripting (DOM-based) | Difficulty: Apprentice
+
+## Vulnerability
+The Submit Feedback page uses jQuery's `$` selector to find an anchor
+(`<a>`) element — the "back" link — and sets its `href` attribute using a
+value taken from the `returnPath` query parameter in the URL. Since this
+value is inserted directly into the `href` attribute without validation,
+an attacker can control where that link actually points.
+
+## Source and Sink (this lab)
+- **Source:** `location.search` (specifically the `returnPath` parameter)
+- **Sink:** jQuery-set `href` attribute on an anchor element
+
+## Steps Taken
+
+### Step 1: Probe how input is reflected
+Changed the `returnPath` query parameter to a random alphanumeric string,
+then inspected the page's HTML to see where that value landed — confirmed
+it was placed directly inside the anchor tag's `href` attribute.
+
+### Step 2: Inject a javascript: URI payload
+Changed `returnPath` to:
+javascript:alert(document.cookie)
+Pressed enter to reload the page with the new query parameter, then
+clicked the "back" link.
+
+## How the Payload Works
+Unlike previous labs (which broke out of an HTML attribute using quotes
+and angle brackets, or used event handlers), this technique exploits the
+fact that an `href` attribute can accept a `javascript:` URI scheme
+instead of a normal URL. When a link with `href="javascript:..."` is
+clicked, the browser executes the code following `javascript:` as
+JavaScript, instead of navigating to a page. Since the `href` value was
+attacker-controlled via the `returnPath` parameter, and no validation
+restricted it to normal URLs, this allowed direct JavaScript execution
+simply by clicking the link.
+
+`document.cookie` specifically returns the cookies associated with the
+current page — a common real-world target for XSS attacks, since session
+cookies can often be stolen this way to hijack a logged-in user's session.
+
+## Result
+Successfully triggered `alert(document.cookie)` by clicking the modified
+"back" link, solving the lab.
+
+## What I Learned
+This lab introduced a new XSS delivery mechanism: the `javascript:` URI
+scheme, which doesn't require injecting any new HTML tags or breaking out
+of an existing attribute using quotes/angle brackets — instead, it directly
+replaces the entire attribute value with executable JavaScript. This is
+only exploitable because the sink is specifically an attribute that
+browsers treat as "clickable/navigable" (like `href`), which accepts
+`javascript:` as a valid scheme. It also introduced `document.cookie` as a
+realistic attack target — in a genuine attack, this technique could be
+combined with a way to exfiltrate the cookie value to an attacker-controlled
+server (rather than just displaying it via alert), which is exactly how
+real session hijacking via XSS often works.
