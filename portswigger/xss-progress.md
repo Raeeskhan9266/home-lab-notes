@@ -180,3 +180,58 @@ right technique to escape that context. Event handlers like `onload` are
 a critical alternative to `<script>` tags — this becomes especially
 important in later labs where `<script>` tags or certain characters are
 likely to be filtered or blocked.
+
+
+## Lab 4: DOM XSS in innerHTML Sink Using Source location.search
+Completed: [aaj ki date]
+Topic: Cross-Site Scripting (DOM-based) | Difficulty: Apprentice
+
+## Vulnerability
+The search blog functionality reads the search term from `location.search`
+(the URL's query string) and assigns it directly to a `div` element's
+`innerHTML` property. This changes the actual HTML content inside that div,
+using attacker-controllable data, without any sanitization.
+
+## Source and Sink (this lab)
+- **Source:** `location.search` — same as Lab 3
+- **Sink:** `innerHTML` assignment — different from Lab 3's `document.write`
+
+## Important Difference from document.write
+A key detail with `innerHTML`: it does **not** execute `<script>` tags
+even if injected directly — browsers deliberately block script execution
+via innerHTML assignment as a partial safety measure. This is why a plain
+`<script>alert(1)</script>` payload would silently fail here, unlike in
+Labs 1–2. Instead, the payload needs to rely on an HTML element whose
+event handler fires automatically, since event handlers *do* still execute
+even when the surrounding HTML is inserted via innerHTML.
+
+## Steps Taken
+1. Entered the following payload directly into the search box:
+<img src=1 onerror=alert(1)>
+```
+2. Clicked "Search"
+How the Payload Works
+
+<img src=1 ...> creates an image tag with an intentionally invalid
+src value (1 is not a real image path)
+Since the browser cannot load a valid image from that broken source, it
+fires the onerror event handler automatically
+onerror=alert(1) means the moment that error event fires, alert(1)
+executes
+
+This works specifically because the payload doesn't rely on a <script>
+tag at all — it uses a naturally-occurring browser event (a failed image
+load) to trigger JavaScript execution, sidestepping innerHTML's
+script-blocking behavior entirely.
+Result
+Successfully triggered alert(1) via the img tag's onerror handler,
+solving the lab.
+What I Learned
+This lab reinforced why event-handler-based payloads (like onerror,
+onload from Lab 3) are often more reliable than <script> tags in
+DOM-based XSS — many DOM sinks (like innerHTML) specifically block script
+execution as a built-in browser protection, but this protection doesn't
+extend to event handlers on other HTML elements. This means understanding
+which sink is being used matters directly for choosing a working
+payload: document.write generally allows script tags to execute, while
+innerHTML does not, requiring an event-handler-based workaround instead.
