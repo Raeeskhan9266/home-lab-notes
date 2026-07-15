@@ -334,7 +334,7 @@ triggered on the `hashchange` event.
 ### Step 2: Build the exploit on the provided exploit server
 Opened the lab's exploit server (a separate hosted page used to simulate
 an attacker-controlled site) and added the following payload to the page body:
-```html
+**```html**
 
 ```
 
@@ -495,3 +495,76 @@ views the comment and clicks the author's name would trigger the payload,
 making it significantly more dangerous in a real-world scenario — a single
 malicious comment could compromise many users over time, not just one
 targeted victim.
+
+
+
+## Lab 9: Reflected XSS into a JavaScript String with Angle Brackets HTML-Encoded
+
+Topic: Cross-Site Scripting (Reflected) | Difficulty: Apprentice
+
+## Vulnerability
+The search query tracking functionality reflects the search term directly
+inside a JavaScript string literal within a `<script>` block on the page
+(e.g. `var searchTerm = 'user-input-here';`). Angle brackets are
+HTML-encoded, so injecting a new HTML tag (`<script>`, `<img>`, etc.)
+would not work. However, since the reflection point is already inside
+existing JavaScript code, the attack doesn't need any HTML tags at all —
+it only needs to break out of the JavaScript string itself.
+
+## Steps Taken
+
+### Step 1: Confirm the reflection context
+Submitted a random alphanumeric string into the search box, intercepted
+the request with Burp Suite, and sent it to Repeater. Confirmed the value
+was being reflected directly inside a JavaScript string (between single
+quotes) inside a `<script>` tag — not inside regular HTML.
+
+### Step 2: Break out of the JavaScript string
+Replaced the input with:
+'-alert(1)-'
+
+### Step 3: Verify the exploit
+Copied the resulting URL and opened it directly in the browser — loading
+the page triggered `alert(1)` automatically.
+
+## How the Payload Works
+- The original code looked something like:
+  `var searchTerm = 'INJECTION_POINT';`
+- The leading `'` closes the original string literal early
+- `-alert(1)-` uses the JavaScript subtraction operator (`-`) purely as a
+  trick to keep the surrounding code syntactically valid while inserting
+  a function call in between — it doesn't matter that subtracting a
+  function's return value from a string doesn't make logical sense, since
+  `alert(1)` still executes as a side effect before the (irrelevant)
+  subtraction result is computed
+- The trailing `-'` reopens a string literal to match the original
+  trailing `'` in the code, keeping the overall JavaScript syntactically
+  valid so no error is thrown and the rest of the script continues to run
+  normally
+
+The resulting code effectively becomes:
+```javascript
+var searchTerm = ''-alert(1)-'';
+```
+which JavaScript parses as: an empty string, minus the result of
+`alert(1)`, minus another empty string — syntactically valid, and
+`alert(1)` executes as part of evaluating that expression.
+
+## Result
+Successfully broke out of the JavaScript string context and triggered
+`alert(1)`, solving the lab without needing any HTML tags or event
+handlers.
+
+## What I Learned
+This lab introduced a distinct XSS context from every previous lab: HTML
+tag encoding is irrelevant when the injection point is already inside a
+`<script>` block, because the attack surface here is JavaScript syntax,
+not HTML syntax. Breaking out of a JavaScript string requires closing the
+quote character being used, then constructing a payload that keeps the
+*surrounding* JavaScript syntactically valid (using operators like `-` to
+"glue" the malicious code in without causing a parse error), rather than
+relying on angle brackets or event handlers at all. This is an important
+category to recognize during real-world testing — inspecting exactly
+*where* reflected input lands (HTML body, HTML attribute, or JavaScript
+string, as seen across Labs 1–9 so far) directly determines which
+technique will actually work.
