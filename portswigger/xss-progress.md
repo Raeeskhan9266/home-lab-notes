@@ -297,3 +297,84 @@ realistic attack target — in a genuine attack, this technique could be
 combined with a way to exfiltrate the cookie value to an attacker-controlled
 server (rather than just displaying it via alert), which is exactly how
 real session hijacking via XSS often works.
+
+
+## Lab 6: DOM XSS in jQuery Selector Sink Using a hashchange Event
+
+Topic: Cross-Site Scripting (DOM-based) | Difficulty: Practitioner
+
+## Vulnerability
+The home page uses jQuery's `$()` selector function to automatically
+scroll to a blog post whose title is taken from `location.hash` (the part
+of a URL after the `#` symbol). This selector is re-evaluated every time
+the URL hash changes — including when it's changed dynamically via
+JavaScript — without sanitizing the hash value first.
+
+## Source and Sink (this lab)
+- **Source:** `location.hash`, specifically triggered via a `hashchange`
+  event (fires whenever the URL's hash portion changes)
+- **Sink:** jQuery `$()` selector — when passed a malicious string instead
+  of a simple ID/class selector, jQuery can interpret and execute injected
+  HTML
+
+## What's New in This Lab: Exploit Delivery
+Unlike Labs 1–5 (where I directly typed a payload into a search box or URL
+and tested it myself), this lab required actually **delivering** a working
+exploit to a separate victim user — closely mirroring how a real attack
+would work, where the attacker crafts a malicious page and lures a victim
+into visiting it, rather than the attacker exploiting their own browser.
+
+## Steps Taken
+
+### Step 1: Identify the vulnerable sink
+Used browser DevTools to inspect the home page's JavaScript and confirmed
+it uses jQuery's `$()` selector with a value derived from `location.hash`,
+triggered on the `hashchange` event.
+
+### Step 2: Build the exploit on the provided exploit server
+Opened the lab's exploit server (a separate hosted page used to simulate
+an attacker-controlled site) and added the following payload to the page body:
+```html
+
+```
+
+### Step 3: Test the exploit against my own browser
+Clicked "View exploit" to confirm the payload correctly triggered the
+browser's `print()` dialog.
+
+### Step 4: Deliver the exploit to the victim
+Clicked "Deliver to victim" — the lab's simulated victim then visited the
+malicious exploit page, triggering the same payload in their browser
+session and solving the lab.
+
+## How the Payload Works
+- The `iframe` loads the target site's home page, appending just `#` to
+  the URL initially (a valid but harmless hash)
+- The `onload` event handler fires once the iframe finishes loading, and
+  appends new content to the iframe's `src` — specifically adding
+  `<img src=x onerror=print()>` to the URL's hash portion
+- Changing the iframe's `src` in this way triggers a `hashchange` event
+  on the framed page, causing the vulnerable jQuery selector to process
+  this new, malicious hash value
+- Since the hash now contains `<img src=x onerror=print()>`, jQuery's
+  selector interprets it as HTML rather than a plain ID selector, and the
+  image's broken `src` fires the `onerror` handler, calling `print()`
+
+## Result
+Successfully delivered a working exploit to a separate victim browser
+session, triggering `print()` and solving the lab.
+
+## What I Learned
+This lab was a meaningful step toward realistic attack simulation —
+instead of exploiting my own request, I had to construct a self-contained
+malicious page (hosted separately, as an attacker's site would be) that
+automatically triggers the vulnerability in a victim's browser the moment
+they visit it, with no interaction required from the victim beyond loading
+the page. This also introduced `location.hash` as a distinct source from
+`location.search` — the hash portion of a URL is never sent to the server
+at all, meaning this class of vulnerability is purely client-side from
+start to finish, and traditional server-side logging/monitoring would
+never even see the malicious hash value in a request log. Combining an
+iframe with a dynamically modified `src` attribute is also a reusable
+technique for triggering hash-based DOM XSS in an automated exploit,
+rather than relying on a victim manually clicking a crafted link.
