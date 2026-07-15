@@ -378,3 +378,62 @@ never even see the malicious hash value in a request log. Combining an
 iframe with a dynamically modified `src` attribute is also a reusable
 technique for triggering hash-based DOM XSS in an automated exploit,
 rather than relying on a victim manually clicking a crafted link.
+
+
+
+## Lab 7: Reflected XSS into Attribute with Angle Brackets HTML-Encoded
+
+Topic: Cross-Site Scripting (Reflected) | Difficulty: Apprentice
+
+## Vulnerability
+The search blog functionality reflects the search term back into an HTML
+attribute value. Unlike earlier reflected XSS labs, this application
+specifically HTML-encodes angle brackets (`<` and `>`) — meaning a
+straightforward `<script>` or `<img>` tag injection would fail here, since
+those characters get converted to harmless entities (`&lt;`, `&gt;`)
+before being rendered. However, quotation marks were **not** encoded,
+leaving a different path open for exploitation.
+
+## Steps Taken
+
+### Step 1: Probe how input is reflected
+Submitted a random alphanumeric string into the search box, then used
+Burp Suite to intercept the resulting request and sent it to Burp Repeater
+for easier testing. Confirmed the string was reflected inside a
+double-quoted HTML attribute value.
+
+### Step 2: Escape the attribute using an unencoded quote
+Replaced the input with:
+"onmouseover="alert(1)
+
+### Step 3: Verify the exploit
+Copied the resulting URL (with the payload as the search parameter) and
+opened it directly in the browser. Hovering the mouse over the affected
+element triggered the `alert(1)` popup.
+
+## How the Payload Works
+- The leading `"` closes the original attribute's quoted value early
+- `onmouseover="alert(1)` then injects a brand new attribute — the
+  `onmouseover` event handler — directly onto the same HTML element
+- Since angle brackets were encoded but quotation marks were not, this
+  attack never needed to create a new tag at all; it simply added a new
+  *attribute* to the existing tag, sidestepping the filter entirely
+- The injected `onmouseover` handler fires whenever a user's mouse passes
+  over the element, executing `alert(1)` at that point
+
+## Result
+Successfully injected a new event-handler attribute and triggered
+`alert(1)` on mouseover, solving the lab.
+
+## What I Learned
+This lab highlighted an important lesson about partial input filtering:
+encoding only `<` and `>` blocks the creation of new HTML tags, but does
+nothing to prevent an attacker from injecting new *attributes* onto an
+already-existing tag, as long as quote characters remain unencoded. This
+reinforces that XSS defenses need to account for every character that
+carries special meaning in the relevant context (angle brackets for tags,
+quotes for attribute boundaries, etc.) — encoding only some of them still
+leaves a viable attack path. It also introduced event-handler-based
+injection without any script tag or new element at all, which is a
+technique likely to reappear in later labs targeting increasingly
+restrictive filters.
