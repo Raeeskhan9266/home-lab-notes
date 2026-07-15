@@ -437,3 +437,61 @@ leaves a viable attack path. It also introduced event-handler-based
 injection without any script tag or new element at all, which is a
 technique likely to reappear in later labs targeting increasingly
 restrictive filters.
+
+
+
+## Lab 8: Stored XSS into Anchor href Attribute with Double Quotes HTML-Encoded
+
+Topic: Cross-Site Scripting (Stored) | Difficulty: Apprentice
+
+## Vulnerability
+The comment functionality's "Website" field is stored and later used to
+set the `href` attribute of an anchor tag around the comment author's
+name. Double quotes are HTML-encoded here, meaning the earlier attribute-
+escape technique from Lab 7 (`"onmouseover=...`) would not work — breaking
+out of the attribute using a quote is blocked. However, since the value
+still lands entirely inside the `href` attribute, the `javascript:` URI
+scheme (from Lab 5) was usable here instead.
+
+## Steps Taken
+
+### Step 1: Confirm reflection point
+Posted a comment with a random alphanumeric string in the "Website" field,
+intercepted the request with Burp Suite, and sent it to Repeater.
+
+### Step 2: Confirm where the value lands
+Made a second request (viewing the post page) and intercepted it in a
+separate Repeater tab, confirming the random string appeared inside an
+anchor tag's `href` attribute.
+
+### Step 3: Inject a javascript: URI payload
+Replaced the "Website" field value with:
+javascript:alert(1)
+Submitted the comment, then loaded the post page and clicked the
+comment author's name (the linked text).
+
+## How the Payload Works
+Since double quotes were encoded, escaping out of the attribute value
+(like in Lab 7) wasn't possible — any injected quote would simply render
+as literal text (`&quot;`), not break the HTML structure. Instead, this
+attack didn't need to escape the attribute at all: it replaced the *entire*
+`href` value with a `javascript:` URI, exactly as in Lab 5. When the
+comment author's name (the anchor text) is clicked, the browser executes
+the JavaScript following `javascript:` instead of navigating to a URL,
+triggering `alert(1)`.
+
+## Result
+Successfully stored a comment whose author link triggers `alert(1)` when
+clicked, solving the lab.
+
+## What I Learned
+This lab reinforced that the `javascript:` URI technique (first used in
+Lab 5) is broadly useful specifically whenever the injection point is an
+entire attribute value that accepts a URL/URI — it doesn't require
+breaking out of quotes or injecting new HTML at all, which makes it
+resistant to defenses that only encode quotes or angle brackets. Since
+this is now stored (unlike Lab 5's reflected version), every visitor who
+views the comment and clicks the author's name would trigger the payload,
+making it significantly more dangerous in a real-world scenario — a single
+malicious comment could compromise many users over time, not just one
+targeted victim.
