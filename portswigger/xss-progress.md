@@ -334,7 +334,7 @@ triggered on the `hashchange` event.
 ### Step 2: Build the exploit on the provided exploit server
 Opened the lab's exploit server (a separate hosted page used to simulate
 an attacker-controlled site) and added the following payload to the page body:
-**```html**
+```html
 
 ```
 
