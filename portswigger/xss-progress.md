@@ -627,3 +627,73 @@ injecting new markup is a reusable pattern for breaking out of *any*
 container element cleanly, not just attributes (as in earlier labs) —
 reinforcing that identifying the exact enclosing HTML structure around
 the injection point is just as important as identifying the sink itself.
+
+
+
+## Lab 11: DOM XSS in AngularJS Expression with Angle Brackets and Double Quotes HTML-Encoded
+
+Topic: Cross-Site Scripting (DOM-based, Framework-Specific) | Difficulty: Practitioner
+
+## Vulnerability
+The search functionality reflects user input inside an HTML element that
+has an `ng-app` attribute — a directive that tells AngularJS (a JavaScript
+framework) to actively scan and process that element's contents. Both
+angle brackets and double quotes are HTML-encoded here, which blocks every
+technique used in previous labs (new tags, attribute escapes). However,
+because AngularJS itself evaluates any expression written inside double
+curly braces (`{{ }}`) as live JavaScript, this creates an entirely
+separate injection path that doesn't depend on HTML characters at all.
+
+## Why Previous Techniques Don't Work Here
+- New tags (`<script>`, `<img>`) — blocked, angle brackets encoded
+- Attribute escape (`"onmouseover=...`) — blocked, double quotes encoded
+- Since both primary "escape characters" used throughout Labs 1–10 are
+  neutralized, a completely different mechanism was needed: AngularJS's
+  own expression evaluation
+
+## Steps Taken
+
+### Step 1: Identify the AngularJS context
+Entered a random alphanumeric string into the search box, then viewed the
+page source and confirmed the reflected value sits inside an element
+carrying the `ng-app` attribute — confirming AngularJS is actively
+scanning and evaluating that section of the page.
+
+### Step 2: Inject an AngularJS expression
+Entered the following into the search box:
+{{$on.constructor('alert(1)')()}}
+Clicked "Search"
+
+## How the Payload Works
+- Anything inside `{{ }}` within an `ng-app`-scoped element is evaluated
+  by AngularJS as a JavaScript-like expression, entirely separate from
+  normal HTML parsing — this bypasses the angle-bracket/quote encoding
+  completely, since no HTML special characters are needed at all
+- `$on` is an accessible property within the AngularJS expression
+  evaluation context; calling `.constructor` on it accesses the underlying
+  JavaScript `Function` constructor
+- `Function('alert(1)')` dynamically creates a new function whose body is
+  the string `alert(1)` — effectively a way to turn an arbitrary string
+  into executable code
+- The trailing `()` immediately invokes that newly created function,
+  executing `alert(1)`
+
+## Result
+Successfully triggered `alert(1)` by exploiting AngularJS's expression
+evaluation feature, completely bypassing both angle-bracket and
+double-quote encoding, solving the lab.
+
+## What I Learned
+This lab was a significant conceptual jump: it demonstrated that XSS
+defenses focused purely on encoding HTML-special characters can be
+completely bypassed when a client-side framework (like AngularJS)
+introduces its *own* expression language that gets evaluated independently
+of standard HTML/JavaScript parsing. This means understanding which
+frontend frameworks/libraries are in use on a target application matters
+directly for security testing — a framework's own template/expression
+syntax can become an entirely separate attack surface that generic input
+encoding doesn't protect against at all. This is also a good example of
+using a constructor-based technique (`Function` constructor via
+`.constructor`) to achieve arbitrary code execution from what looks like a
+harmless string, a pattern that shows up in more advanced
+sandbox-escape and filter-bypass XSS scenarios.
