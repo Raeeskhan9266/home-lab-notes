@@ -697,3 +697,94 @@ using a constructor-based technique (`Function` constructor via
 `.constructor`) to achieve arbitrary code execution from what looks like a
 harmless string, a pattern that shows up in more advanced
 sandbox-escape and filter-bypass XSS scenarios.
+
+
+## Lab 12: Reflected DOM XSS
+
+Topic: Cross-Site Scripting (Reflected DOM) | Difficulty: Practitioner
+
+## Vulnerability
+This lab combines both server-side and client-side behavior. The server
+takes the search term from the request and echoes it back inside a JSON
+response (`search-results`). A separate client-side script
+(`searchResults.js`) then takes that JSON response and processes it using
+`eval()` — a JavaScript function that executes any string passed to it as
+actual code. The server does attempt to escape double-quote characters in
+the response, but critically does **not** escape backslash characters,
+creating an exploitable gap.
+
+## What is "Reflected DOM" XSS?
+This is a hybrid category: the vulnerability starts on the server side
+(user input is reflected back in a response, like traditional reflected
+XSS), but the actual dangerous execution happens client-side, when
+JavaScript unsafely processes that reflected data via a sink like `eval()`.
+This differs from Labs 3, 4, 6, and 10 (pure DOM XSS), where the data
+never touched the server at all (e.g. `location.hash`, `location.search`
+read directly by client-side JS with no server round-trip for that value).
+
+## Steps Taken
+
+### Step 1: Observe the reflection
+Enabled Burp Suite's Intercept feature, searched for a test string like
+`"XSS"` on the site, and forwarded the request. Observed in the
+intercepted response that the search term was reflected inside a JSON
+object under a `search-results` response.
+
+### Step 2: Identify the dangerous sink
+Opened `searchResults.js` via Burp's Site Map and found that this script
+takes the JSON response and passes it directly into an `eval()` call —
+meaning the entire JSON response body is executed as JavaScript code, not
+just parsed as inert data.
+
+### Step 3: Test the server's escaping behavior
+Experimented with different search strings containing special characters
+and found that the server escapes double-quote characters (`"` becomes
+`\"`) but does **not** escape backslash characters (`\`) themselves.
+
+### Step 4: Exploit the escaping gap
+Submitted the following as the search term:
+"-alert(1)}//
+
+## How the Payload Works
+- The payload begins with a backslash (`\`) followed by a double-quote (`"`)
+- Since the server escapes quotes but not backslashes, when the server
+  processes this input, it turns the `"` into `\"` — but the backslash I
+  already supplied is placed immediately before it, resulting in `\\"`
+  in the final response
+- A double-backslash (`\\`) in a JSON/JavaScript string is interpreted as
+  a single literal backslash character, which means the following quote
+  is **no longer escaped** — it now acts as a real, functional
+  string-closing quote
+- This effectively closes the JSON string early, right where I wanted it to
+- `-alert(1)` then uses the subtraction operator (same trick as Lab 9) to
+  insert a function call while keeping the surrounding expression
+  syntactically parseable by `eval()`
+- `}//` closes the JSON object early and comments out anything that would
+  have followed, preventing a syntax error from breaking the rest of the
+  `eval()` call
+
+The final response body effectively became:
+```json
+{"searchTerm":"\\"-alert(1)}//", "results":[]}
+```
+which, once passed through `eval()`, executes `alert(1)` as a side effect
+of evaluating the constructed expression.
+
+## Result
+Successfully exploited the backslash-escaping gap to break out of the JSON
+string inside an `eval()` sink, triggering `alert(1)` and solving the lab.
+
+## What I Learned
+This was one of the most intricate labs so far — it required understanding
+how escaping works at a character level (specifically, that escaping only
+the double-quote character is insufficient if backslash itself isn't also
+escaped, since an attacker-supplied backslash can "consume" the server's
+defensive escape and neutralize it). It also reinforced why `eval()` is
+considered one of the most dangerous possible sinks in JavaScript: passing
+untrusted data — even data wrapped in what looks like a safe JSON
+structure — into `eval()` means any successful string-escape technique
+leads directly to arbitrary code execution. This lab combined multiple
+techniques learned earlier (subtraction-operator glueing from Lab 9,
+careful analysis of exact escaping behavior) into a single, realistic
+attack chain that closely resembles subtle real-world escaping bugs found
+in production applications.
