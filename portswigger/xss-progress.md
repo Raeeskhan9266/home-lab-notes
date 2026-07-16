@@ -568,3 +568,62 @@ category to recognize during real-world testing — inspecting exactly
 *where* reflected input lands (HTML body, HTML attribute, or JavaScript
 string, as seen across Labs 1–9 so far) directly determines which
 technique will actually work.
+
+
+
+## Lab 10: DOM XSS in document.write Sink Using location.search Inside a select Element
+
+Topic: Cross-Site Scripting (DOM-based) | Difficulty: Practitioner
+
+## Vulnerability
+The stock checker functionality on product pages extracts a `storeId`
+parameter from `location.search` and uses `document.write()` to insert it
+as a new `<option>` inside an existing `<select>` (dropdown) element. This
+is the same sink (`document.write`) seen in Lab 3, but this time the
+injection point sits inside a `<select>` element's content, which requires
+a different escape approach.
+
+## Steps Taken
+
+### Step 1: Confirm the reflection point
+Added a `storeId` parameter with a random alphanumeric string to the
+product page URL and loaded it. Observed the random string appeared as a
+new option inside the stock checker's dropdown list.
+
+### Step 2: Inspect the exact HTML context
+Right-clicked and inspected the dropdown element, confirming the
+`storeId` value was being placed directly inside the `<select>` element's
+option list, as raw HTML content (not inside a tag attribute).
+
+### Step 3: Break out of the select element
+Modified the URL to:
+product?productId=1&storeId="></select><img src=1 onerror=alert(1)>
+
+## How the Payload Works
+- `"></select>` closes the (nonexistent, since we're already inside plain
+  content) attribute context defensively, then explicitly closes the
+  `<select>` element early, ending the dropdown entirely
+- `<img src=1 onerror=alert(1)>` then injects a new element after the now-
+  closed select — using the same broken-image/onerror technique from
+  Lab 4, since this is a reliable way to trigger JavaScript execution
+  without relying on `<script>` tags
+- Because the payload explicitly closes the `<select>` tag before
+  injecting the `<img>` element, the browser treats the `<img>` tag as a
+  regular, independent HTML element outside of the dropdown — allowing it
+  to load (and fail to load, triggering `onerror`) normally
+
+## Result
+Successfully broke out of the `<select>` element and triggered `alert(1)`
+via the img tag's onerror handler, solving the lab.
+
+## What I Learned
+This lab extended the `document.write` sink concept from Lab 3 into a more
+specific and slightly trickier scenario: the injection point wasn't just
+"somewhere in the HTML body," but specifically nested inside a `<select>`
+element, which meant simply injecting an `<img>` tag directly (without
+first closing the select) might not behave as expected inside a dropdown
+context. Explicitly closing the enclosing element (`</select>`) before
+injecting new markup is a reusable pattern for breaking out of *any*
+container element cleanly, not just attributes (as in earlier labs) —
+reinforcing that identifying the exact enclosing HTML structure around
+the injection point is just as important as identifying the sink itself.
