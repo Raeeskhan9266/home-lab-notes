@@ -851,3 +851,84 @@ fragile and depend entirely on getting every implementation detail
 correct, whereas the more robust real-world fix is almost always to use
 context-aware output encoding libraries or a Content Security Policy,
 rather than hand-rolled string replacement logic.
+
+
+
+## Lab 14: Reflected XSS into HTML Context with Most Tags and Attributes Blocked
+
+Topic: Cross-Site Scripting (WAF Bypass) | Difficulty: Practitioner/Expert
+
+## Vulnerability
+The search functionality is reflected XSS-vulnerable, but a Web Application
+Firewall (WAF) sits in front of it, blocking most common XSS payloads,
+tags, and attributes. Solving this required systematically discovering
+exactly which tag and which event attribute the WAF does NOT block,
+rather than relying on a single known payload.
+
+## Steps Taken
+
+### Step 1: Confirm standard payloads are blocked
+Tried a standard payload:
+<img src=1 onerror=print()>
+````
+This was blocked by the WAF, confirming filtering is in place beyond
+simple encoding.
+Step 2: Systematically fuzz allowed HTML tags using Burp Intruder
+Sent a search request to Burp Intruder and set the search term to:
+<>
+Placed a payload position between the angle brackets (<§§>), then used
+PortSwigger's XSS cheat sheet to load a comprehensive list of HTML tags as
+the payload set. Ran the attack, testing every tag automatically.
+Result: Nearly every tag caused an HTTP 400 (blocked) response,
+except body, which returned 200 — confirming the WAF allows the
+<body> tag specifically.
+Step 3: Systematically fuzz allowed event attributes
+Using the confirmed <body> tag, set the search term to:
+<body%20=1>
+Placed a payload position right before the = sign (<body%20§§=1>),
+then loaded the cheat sheet's list of event handler attributes as the
+payload set. Ran the attack again.
+Result: Most event attributes returned 400, except onresize, which
+returned 200 — confirming onresize was the one event handler the WAF
+permitted.
+Step 4: Construct the working payload
+Combined the two discovered allowed elements:
+"><body onresize=print()>
+This alone triggers print() — but onresize only fires when the
+element's containing window/frame is resized, which doesn't happen
+naturally on a normal page load. This required a delivery mechanism that
+would force a resize event.
+Step 5: Build a delivery exploit that triggers the resize event
+On the exploit server, created the following payload:
+html<iframe src="https://YOUR-LAB-ID.web-security-academy.net/?search=%22%3E%3Cbody%20onresize=print()%3E" onload="this.style.width='100px'">
+
+The iframe's src loads the vulnerable search page with the
+URL-encoded XSS payload already embedded in the search parameter
+The iframe's own onload handler fires once it finishes loading, and
+immediately changes the iframe's width (this.style.width='100px')
+Resizing the iframe in this way triggers a resize event on the framed
+page itself, which fires the injected onresize handler, executing
+print()
+
+Step 6: Deliver to victim
+Stored the exploit and clicked "Deliver exploit to victim," successfully
+triggering print() in the victim's simulated browser session.
+Result
+Successfully identified the one tag (body) and one event attribute
+(onresize) not blocked by the WAF, then engineered a delivery mechanism
+(an iframe that forcibly resizes itself) to reliably trigger that specific
+event handler — bypassing the WAF entirely and solving the lab.
+What I Learned
+This was the most advanced XSS lab completed so far, combining several
+skills: automated fuzzing with Burp Intruder to systematically map exactly
+what a WAF allows versus blocks (rather than guessing individual payloads
+one at a time), understanding that some event handlers (like onresize,
+onscroll, onfocus) don't fire automatically on page load and require
+specifically engineering a way to trigger the underlying browser event
+(here, forcing an iframe resize), and constructing a self-contained
+delivery exploit that does all of this automatically the moment a victim
+opens the page. This reflects genuinely realistic WAF-bypass methodology:
+real-world XSS filter evasion is rarely about finding one clever payload —
+it's about systematically testing what a filter actually blocks versus
+what it misses, then adapting the exploit to work within those
+constraints.
