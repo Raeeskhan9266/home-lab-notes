@@ -932,3 +932,75 @@ real-world XSS filter evasion is rarely about finding one clever payload —
 it's about systematically testing what a filter actually blocks versus
 what it misses, then adapting the exploit to work within those
 constraints.
+
+
+
+## Lab 15: Reflected XSS into HTML Context with All Tags Blocked Except Custom Ones
+
+Topic: Cross-Site Scripting (WAF Bypass) | Difficulty: Expert
+
+## Vulnerability
+This application's filter blocks every recognized/standard HTML tag
+(`img`, `body`, `svg`, `script`, etc.) but does not block **custom,
+non-standard tag names** — since these aren't real HTML elements, the
+filter's blocklist (built around known tags) simply doesn't recognize them
+as dangerous. However, a custom tag has no built-in behavior of its own —
+it needs an event handler attribute to actually execute JavaScript, and
+that event needs a way to fire automatically without user interaction.
+
+## Steps Taken
+
+### Step 1: Construct the custom tag payload
+Built a payload using a fictitious tag name (`xss`, which has no special
+meaning in HTML) with an `onfocus` event handler:
+<xss id=x onfocus=alert(document.cookie) tabindex=1>
+````
+- `id=x` gives the element a reference name
+- `tabindex=1` makes the otherwise non-interactive custom element
+  focusable (custom tags aren't focusable by default, since browsers don't
+  know what they are)
+- `onfocus=alert(document.cookie)` fires the alert whenever this element
+  receives focus
+Step 2: Use a URL fragment to auto-trigger focus
+Appended #x to the target URL — when a URL fragment matches an
+element's id, the browser automatically scrolls to and focuses that
+element on page load, without requiring the victim to click, hover, or
+interact with the page at all.
+Step 3: Build and deliver the exploit
+On the exploit server, used a <script> tag to redirect the victim's
+browser to a URL containing the encoded payload and the #x fragment:
+html<script>
+location = 'https://YOUR-LAB-ID.web-security-academy.net/?search=%3Cxss+id%3Dx+onfocus%3Dalert%28document.cookie%29%20tabindex=1%3E#x';
+</script>
+Clicked "Store" and "Deliver exploit to victim."
+How the Payload Works
+
+The filter only blocks known/standard tag names, so an invented tag like
+<xss> passes through completely unfiltered
+Since custom tags have no inherent behavior, tabindex=1 is required to
+make the element eligible to receive keyboard/programmatic focus at all
+The #x URL fragment causes the browser to automatically jump to and
+focus the element with id="x" the moment the page finishes loading —
+this is standard browser behavior for URL fragments matching element IDs,
+not something requiring JavaScript to trigger manually
+The moment focus lands on the element, the onfocus handler fires,
+executing alert(document.cookie) with zero victim interaction required
+
+Result
+Successfully bypassed a tag-name-based filter using a completely
+non-standard/custom tag name, combined with a URL fragment trick to
+auto-trigger the onfocus event without any user interaction, solving
+the lab.
+What I Learned
+This lab demonstrated that blocklist-based filters targeting known,
+"dangerous" tag names have a fundamental blind spot: browsers will still
+parse and render any tag name, even ones with no defined meaning
+(<xss>, <foo>, etc.) — the browser simply treats them as generic,
+unstyled elements. As long as an event handler attribute is attached and
+some way exists to trigger that event, the specific tag name used is
+irrelevant to actual exploitation. Using a URL fragment (#id) to
+auto-focus an element is also a valuable, non-obvious technique for
+triggering onfocus-based payloads automatically on page load, without
+requiring the victim to click or interact with anything — reinforcing
+that many event handlers assumed to require user interaction can actually
+be triggered programmatically through browser behaviors like this.
