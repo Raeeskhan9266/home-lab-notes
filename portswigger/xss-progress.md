@@ -1004,3 +1004,60 @@ triggering onfocus-based payloads automatically on page load, without
 requiring the victim to click or interact with anything — reinforcing
 that many event handlers assumed to require user interaction can actually
 be triggered programmatically through browser behaviors like this.
+
+
+
+## Lab 16: Reflected XSS with Some SVG Markup Allowed
+
+Topic: Cross-Site Scripting (Filter Bypass) | Difficulty: Practitioner
+
+## Vulnerability
+The application's filter blocks common HTML tags typically associated
+with XSS (`script`, `img`, `body`, etc.), but does not account for
+SVG-specific elements and their associated event attributes — a less
+commonly known but fully valid part of HTML/SVG markup.
+
+## Steps Taken
+
+### Step 1: Identify the gap in the filter
+Recognized that SVG-related tags and animation elements are often
+overlooked by filters designed primarily around standard HTML tags, since
+SVG has its own set of elements and event attributes distinct from
+regular HTML.
+
+### Step 2: Construct the payload
+<svg><animatetransform onbegin=alert(1) attributeName=transform>
+
+## How the Payload Works
+- `<svg>` opens an SVG container element — often allowed through filters
+  since it's a legitimate, common tag used for vector graphics, not
+  typically associated with script execution
+- `<animatetransform>` is an SVG animation element, used normally to
+  animate properties like position, scale, or rotation over time
+- `onbegin` is an event attribute specific to SVG animation elements — it
+  fires automatically the moment the animation begins, with no user
+  interaction required
+- `attributeName=transform` specifies which property the (fake/unused)
+  animation targets — required for the element to be valid enough for the
+  browser to actually process it and fire the `onbegin` event
+- The moment the browser parses and begins processing this animation
+  element, `onbegin` fires automatically, executing `alert(1)`
+
+## Result
+Successfully bypassed the tag filter using SVG-specific markup and an
+SVG-specific event attribute, triggering `alert(1)` automatically on page
+load, solving the lab.
+
+## What I Learned
+This lab reinforced a recurring theme from Labs 14–15: filters built
+around a fixed list of "known dangerous" tags and attributes consistently
+miss less mainstream but fully valid parts of the HTML/SVG specification.
+SVG in particular has its own rich set of elements and event attributes
+(`onbegin`, `onend`, `onrepeat`, etc.) that are frequently absent from
+XSS blocklists because they're less commonly seen in typical attacks,
+despite being just as capable of executing JavaScript. This further
+confirms that blocklist-based filtering is fundamentally difficult to get
+right, since it requires anticipating every valid tag/attribute
+combination across the entire HTML and SVG specifications — reinforcing
+why allowlist-based sanitization (or a strict Content Security Policy) is
+a far more robust defense than trying to block "known bad" patterns.
