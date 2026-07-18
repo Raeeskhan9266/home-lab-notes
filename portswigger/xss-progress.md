@@ -1061,3 +1061,66 @@ right, since it requires anticipating every valid tag/attribute
 combination across the entire HTML and SVG specifications — reinforcing
 why allowlist-based sanitization (or a strict Content Security Policy) is
 a far more robust defense than trying to block "known bad" patterns.
+
+
+
+
+## Lab 17: Reflected XSS in Canonical Link Tag
+
+Topic: Cross-Site Scripting (Attribute Injection) | Difficulty: Expert
+
+## Vulnerability
+User input is reflected inside a `<link rel="canonical">` tag on the home
+page. Angle brackets are escaped, ruling out any new tag injection.
+However, since the reflection point sits inside an existing tag, an
+attacker can still inject new *attributes* onto that tag — the same
+underlying idea as Lab 7, but applied to a tag type (`link`) that isn't
+normally associated with XSS at all.
+
+## Steps Taken
+
+### Step 1: Construct the payload
+Since angle brackets were escaped, injected new attributes directly onto
+the existing `<link>` tag instead of trying to create a new element:
+'accesskey='x'onclick='alert(1)
+Visited:
+https://YOUR-LAB-ID.web-security-academy.net/?%27accesskey=%27x%27onclick=%27alert(1)
+
+### Step 2: Trigger the exploit
+Since `accesskey` requires an actual keyboard shortcut to activate (it
+doesn't fire automatically), pressed the corresponding key combination for
+the browser/OS being used (e.g. `Alt+X` on Linux), which triggered the
+injected `onclick` handler.
+
+## How the Payload Works
+- The injected `accesskey='x'` attribute defines `X` as a keyboard
+  accessibility shortcut for the entire page/element — a legitimate HTML
+  feature intended to let users quickly focus/activate an element via the
+  keyboard
+- `onclick='alert(1)'` is injected as a second new attribute on the same
+  tag — this is the actual payload, but it only fires on a click-like
+  interaction
+- Critically, activating an `accesskey` combination counts as triggering a
+  "click" on the associated element, even though no mouse was used — so
+  pressing the OS-specific key combination (e.g. `Alt+Shift+X`,
+  `Ctrl+Alt+X`, or `Alt+X`) fires the `onclick` handler exactly as if the
+  (invisible, non-interactive) `<link>` element had been physically clicked
+
+## Result
+Successfully injected `accesskey` and `onclick` attributes onto an
+existing `<link>` tag, and triggered `alert(1)` by pressing the
+corresponding access-key combination, solving the lab.
+
+## What I Learned
+This lab showed that attribute injection (from Lab 7) isn't limited to
+"obviously interactive" tags like anchors or images — even a `<link>` tag,
+which normally has no visible presence or user interaction at all, can be
+turned into a click target using the `accesskey` attribute combined with
+an `onclick` handler. This is a good example of abusing a legitimate
+accessibility feature for an unintended, malicious purpose — a pattern
+worth remembering, since accessibility-related attributes are rarely
+considered part of a typical XSS threat model but can still provide a
+fully functional interaction trigger. It also reinforced that identifying
+*which* tag an injection lands in doesn't limit the attack to that tag's
+"expected" behavior — any tag can become interactive if the right
+attributes are added.
