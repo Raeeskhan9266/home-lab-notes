@@ -1124,3 +1124,66 @@ fully functional interaction trigger. It also reinforced that identifying
 *which* tag an injection lands in doesn't limit the attack to that tag's
 "expected" behavior — any tag can become interactive if the right
 attributes are added.
+
+
+
+## Lab 18: Reflected XSS into a JavaScript String with Single Quote and Backslash Escaped
+
+Topic: Cross-Site Scripting (Reflected) | Difficulty: Practitioner
+
+## Vulnerability
+The search query tracking functionality reflects input inside a
+JavaScript string (similar context to Lab 9), but this time both single
+quotes and backslashes are properly escaped — meaning the Lab 9 technique
+(`'-alert(1)-'`) would fail here, since the injected `'` would simply be
+converted to `\'` and remain part of the string rather than closing it.
+
+## Why the Lab 9 Technique Fails Here
+Tested a payload like `test'payload` and confirmed the single quote was
+automatically backslash-escaped in the reflected output — properly
+preventing the string from being broken out of at the JavaScript-string
+level. This meant the vulnerability had to be exploited one level "higher"
+than the string itself.
+
+## Steps Taken
+
+### Step 1: Confirm quote escaping is working correctly
+Sent `test'payload` and observed the single quote reflected as `\'` in the
+response — confirming this specific defense was solid at the string level.
+
+### Step 2: Escape the surrounding script block instead
+Replaced the input with:
+</script><script>alert(1)</script>
+
+## How the Payload Works
+- Rather than trying to break out of the JavaScript *string* (which is
+  properly defended), this payload closes the entire enclosing `<script>`
+  *tag* first, using `</script>`
+- Since the browser's HTML parser processes `</script>` as a real tag
+  closure regardless of what's happening inside the JavaScript string at
+  that point, this immediately ends the original script block — the
+  broken/unclosed string inside it becomes irrelevant, since the browser
+  has already stopped treating that content as JavaScript
+- `<script>alert(1)</script>` then opens a brand new, completely
+  independent script block, containing a clean, valid `alert(1)` call with
+  no need to escape any quotes at all
+
+## Result
+Successfully bypassed proper string-level escaping by exploiting the HTML
+parser's handling of `</script>`, closing the original script block and
+starting a fresh one, triggering `alert(1)` and solving the lab.
+
+## What I Learned
+This lab was an important reminder that different layers of parsing
+happen independently: the browser's HTML parser looks for `<script>` and
+`</script>` tags regardless of what's syntactically valid *inside* the
+JavaScript at that point — it doesn't care that a string was left open
+when it encounters `</script>`. This means that even when input is
+correctly escaped for the JavaScript-string context specifically (quotes
+and backslashes both handled properly, unlike Lab 9), the injection can
+still succeed by escaping at the *HTML* level instead — closing the
+entire script element early and starting a fresh one. This reinforces
+that XSS defenses must account for every relevant parsing layer (HTML
+parsing, then JavaScript parsing within a script block), not just the
+specific context the developer had in mind when writing the escaping
+logic.
