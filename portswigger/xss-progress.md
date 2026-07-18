@@ -1187,3 +1187,76 @@ that XSS defenses must account for every relevant parsing layer (HTML
 parsing, then JavaScript parsing within a script block), not just the
 specific context the developer had in mind when writing the escaping
 logic.
+
+
+
+## Lab 19: Reflected XSS into a JavaScript String with Angle Brackets/Double Quotes Encoded and Single Quotes Escaped
+
+Topic: Cross-Site Scripting (Reflected) | Difficulty: Practitioner
+
+## Vulnerability
+The search query tracking functionality reflects input inside a
+JavaScript string, with three layers of defense in place: angle brackets
+are HTML-encoded, double quotes are HTML-encoded, and single quotes are
+backslash-escaped. However, backslash characters themselves are not
+escaped — the same category of gap seen conceptually in Lab 12 (the
+`eval()` JSON lab), but applied directly to a JavaScript string context
+here rather than JSON.
+
+## Why Earlier Techniques Don't Work Here
+- **Lab 9's technique** (`'-alert(1)-'`) fails because the single quote
+  gets backslash-escaped, remaining part of the string instead of closing it
+- **Lab 18's technique** (`</script><script>alert(1)</script>`) fails
+  because angle brackets are HTML-encoded here, preventing any new tag
+  (including a closing `</script>`) from being interpreted as real HTML
+
+## Steps Taken
+
+### Step 1: Confirm single-quote escaping
+Sent `test'payload` and confirmed the single quote was escaped to `\'` in
+the response — ruling out the direct string-break technique from Lab 9.
+
+### Step 2: Test backslash handling specifically
+Sent `test\payload` and observed that the backslash was reflected back
+completely unescaped — identifying the same type of gap exploited
+conceptually in Lab 12.
+
+### Step 3: Exploit the backslash gap to neutralize the quote escaping
+Replaced the input with:
+'-alert(1)//
+
+## How the Payload Works
+- I supply my own leading backslash (`\`) directly before a single quote
+- When the server's filter processes this and escapes the single quote
+  (adding its own backslash), the result becomes a double backslash
+  followed by a quote (`\\'`)
+- A double backslash in a JavaScript string is interpreted as a single,
+  literal backslash character — which means the quote immediately
+  following it is **no longer treated as escaped** by the JavaScript
+  parser; it functions as a real, string-closing quote
+- This closes the original JavaScript string exactly where needed
+- `-alert(1)` uses the same subtraction-operator technique from Labs 9
+  and 12 to insert the function call while keeping the surrounding
+  expression syntactically valid
+- `//` comments out anything that would have followed on that line,
+  preventing a syntax error from the original trailing quote/semicolon
+
+## Result
+Successfully used a self-supplied backslash to cancel out the
+application's quote-escaping defense, breaking out of the JavaScript
+string and triggering `alert(1)`, solving the lab.
+
+## What I Learned
+This lab was essentially the same core exploitation logic as Lab 12
+(supplying a backslash to consume/neutralize a server's escape character),
+but applied to a plain JavaScript string context instead of a JSON
+response processed by `eval()`. This reinforced that this backslash-gap
+pattern is a general technique, not a one-off trick specific to JSON — any
+time a defense escapes a specific character (like a quote) without also
+escaping backslash itself, an attacker can supply their own backslash to
+neutralize that escaping. Combined with Labs 9, 12, and 18, this lab rounds
+out a strong practical understanding of JavaScript-string-context XSS:
+direct string-breaking (Lab 9), HTML-parser-level escape (Lab 18), and
+escape-character-neutralization (Labs 12 and this lab) now cover the three
+main approaches to escaping a JavaScript string context depending on which
+specific characters a given defense does or doesn't handle correctly.
