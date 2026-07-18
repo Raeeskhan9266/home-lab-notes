@@ -1260,3 +1260,82 @@ direct string-breaking (Lab 9), HTML-parser-level escape (Lab 18), and
 escape-character-neutralization (Labs 12 and this lab) now cover the three
 main approaches to escaping a JavaScript string context depending on which
 specific characters a given defense does or doesn't handle correctly.
+
+
+
+## Lab 20: Stored XSS into onclick Event with Angle Brackets/Double Quotes Encoded and Single Quotes/Backslash Escaped
+
+Topic: Cross-Site Scripting (Stored) | Difficulty: Expert
+
+## Vulnerability
+The comment functionality's "Website" field is stored and reflected inside
+an `onclick` event handler attribute on the comment author's name. This
+lab stacks every defense seen so far: angle brackets and double quotes are
+HTML-encoded, AND single quotes are backslash-escaped, AND backslash
+itself is also properly escaped this time — closing the exact gap that
+Lab 19 exploited.
+
+## Why Earlier Techniques Don't Work Here
+- **Lab 9/19's techniques** (breaking out with a literal `'`) fail because
+  single quotes are escaped
+- **Lab 19's backslash-neutralization trick** fails because backslash is
+  now also properly escaped, so supplying my own `\` no longer creates an
+  exploitable double-backslash
+
+## Steps Taken
+
+### Step 1: Confirm the reflection point
+Posted a comment with a random alphanumeric string in the "Website" field,
+intercepted both the posting request and the page-viewing request with
+Burp Suite, and confirmed the value was reflected inside an `onclick`
+attribute on the author name element.
+
+### Step 2: Confirm quote and backslash escaping
+Tested payloads containing raw single quotes and backslashes, and
+confirmed both were being properly escaped in the output this time —
+ruling out both previous bypass techniques.
+
+### Step 3: Use HTML entity encoding instead of literal characters
+Replaced the "Website" field value with:
+http://foo?&apos;-alert(1)-'
+
+## How the Payload Works
+- `&apos;` is the HTML entity representation of a single quote character
+- Critically, the application's escaping logic operates on the *literal*
+  `'` character in the submitted input — but since I never submit a
+  literal quote at all (I submit the harmless entity `&apos;` instead),
+  there's nothing for that escaping logic to detect or act on
+- However, when the browser parses the final HTML and encounters
+  `&apos;` inside the attribute, it decodes this entity back into an
+  actual `'` character **before** that attribute value is handed off to
+  the JavaScript engine for execution
+- This means the quote "reappears" only at the point of browser rendering
+  — after the server-side/JavaScript-level escaping has already run and
+  found nothing to escape
+- Once decoded, the payload behaves exactly like the direct string-break
+  technique from Lab 9: the quote closes the attribute's string context,
+  `-alert(1)-` uses the subtraction-operator trick to insert the function
+  call while keeping the surrounding onclick handler syntactically valid
+
+## Result
+Successfully used an HTML entity (`&apos;`) to smuggle a quote character
+past both the quote-escaping and backslash-escaping defenses, since
+neither ever saw a literal quote to escape — solving the lab when clicking
+the comment author's name triggered `alert(1)`.
+
+## What I Learned
+This lab exposed a fundamentally different class of gap than Labs 12 and
+19: instead of exploiting a flaw in *how* escaping was implemented (like a
+missed backslash), this exploited the fact that escaping logic and HTML
+entity decoding happen at *different stages* of processing, in a specific
+order the defense didn't account for. The server-side escaping only
+inspects literal characters in the raw input, but the browser later
+decodes HTML entities within an attribute value before that value is used
+as JavaScript — meaning any character-based escaping filter can be
+bypassed entirely by encoding the dangerous character as an HTML entity
+instead of submitting it literally. Combined with Labs 9, 12, 18, and 19,
+this rounds out a comprehensive understanding of the many independent
+layers (HTML entity decoding, JavaScript string escaping, HTML tag
+parsing) that a single XSS defense must correctly handle simultaneously —
+missing even one of these layers, as seen across every lab in this
+"advanced" cluster, is enough to make the whole defense bypassable.
