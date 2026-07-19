@@ -1339,3 +1339,75 @@ layers (HTML entity decoding, JavaScript string escaping, HTML tag
 parsing) that a single XSS defense must correctly handle simultaneously —
 missing even one of these layers, as seen across every lab in this
 "advanced" cluster, is enough to make the whole defense bypassable.
+
+
+## Lab 21: Reflected XSS into a Template Literal with Angle Brackets, Quotes, Backslash, and Backticks Escaped
+
+Topic: Cross-Site Scripting (Reflected) | Difficulty: Expert
+
+## Vulnerability
+The search blog functionality reflects input inside a JavaScript
+**template literal** (a string defined using backticks, e.g.
+`` `Results for: USER_INPUT` ``). This defense stacks encoding/escaping
+for nearly every character used in previous bypass techniques: angle
+brackets and quotes are HTML-encoded, and backticks themselves are
+escaped — meaning none of the tag-injection, attribute-breaking, or
+string-breaking-via-quote techniques from earlier labs could work here.
+
+## What Makes Template Literals a Distinct Context
+Unlike regular JavaScript strings (single/double-quoted, as in Labs 9,
+12, 18, 19, 20), template literals have a special built-in feature:
+**expression interpolation** using `${ }` syntax. Any valid JavaScript
+expression placed inside `${ }` is automatically evaluated by the
+JavaScript engine and its result is inserted into the string — this is a
+core, intended language feature, not a vulnerability by itself, but it
+becomes exploitable the moment attacker-controlled input lands inside an
+existing template literal.
+
+## Steps Taken
+
+### Step 1: Confirm the reflection context
+Submitted a random alphanumeric string into the search box, intercepted
+the request with Burp Suite, and sent it to Repeater. Confirmed the value
+was reflected inside a JavaScript template literal (backtick-delimited
+string).
+
+### Step 2: Inject a template literal expression
+Replaced the input with:
+${alert(1)}
+
+### Step 3: Verify the exploit
+Copied the resulting URL and loaded it directly in the browser — the page
+triggered `alert(1)` automatically on load.
+
+## How the Payload Works
+- Since the reflected value lands *inside* an already-open template
+  literal, no backtick, quote, or angle bracket needs to be injected or
+  escaped at all — the surrounding template literal is never broken out
+  of
+- `${alert(1)}` is simply valid template literal syntax: the JavaScript
+  engine evaluates whatever expression is inside `${ }` and substitutes
+  the result into the string
+- Because `alert(1)` is a valid JavaScript expression, the engine executes
+  it as part of normal string evaluation, with `alert(1)`'s return value
+  (which doesn't really matter) being interpolated into the final string
+
+## Result
+Successfully executed `alert(1)` using template literal expression
+interpolation, without needing to escape or break out of the surrounding
+string at all, solving the lab.
+
+## What I Learned
+This lab introduced an entirely different exploitation model compared to
+every previous JavaScript-string-context lab: instead of trying to escape
+*out* of the string (which was thoroughly blocked here — quotes, angle
+brackets, backslash, and even backticks were all handled), the attack
+worked *within* the string's own syntax, using a legitimate language
+feature (`${ }` expression interpolation) that template literals provide
+by design. This is an important reminder that as JavaScript itself
+gains more expressive syntax (template literals were a relatively newer
+addition to the language), new built-in language features can introduce
+entirely new injection surfaces that traditional character-escaping
+defenses (focused on quotes, brackets, and backslashes) don't anticipate
+at all — the vulnerability here isn't a broken escape, but a feature that
+inherently evaluates code embedded inside a string.
