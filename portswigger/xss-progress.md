@@ -1505,3 +1505,91 @@ data to an external listener is exactly how a real attacker would collect
 results from a payload deployed against unknown victims. This lab is a
 strong, concrete example to discuss in an interview, since it demonstrates
 understanding of XSS's actual business impact, not just its mechanics.
+
+
+## Lab 23: Exploiting Cross-Site Scripting to Capture Passwords
+
+Topic: Cross-Site Scripting (Real-World Impact / Credential Theft) | Difficulty: Practitioner
+
+## Vulnerability
+Same stored XSS vulnerability class as Lab 22 (blog comments function,
+viewed automatically by a simulated victim), but this time the exploit
+goal was to capture the victim's actual login credentials (username and
+password) rather than a session cookie — by injecting a fake, invisible
+login form directly into the comment.
+
+## Why This Lab Is Different from Lab 22
+Lab 22 exfiltrated an existing piece of browser data (`document.cookie`)
+that was already present without any user action. This lab instead
+required *tricking the victim into providing new input* — injecting fake
+form fields that mimic a legitimate login prompt, capturing whatever the
+victim types into them, and exfiltrating that captured data the moment
+they interact with it.
+
+## Steps Taken
+
+### Step 1: Set up an out-of-band listener
+Opened Burp Suite Professional's Collaborator tab and copied a unique
+Collaborator payload/subdomain to use as the exfiltration destination.
+
+### Step 2: Post a malicious comment containing a fake login form
+Submitted the following as a blog comment:
+```html
+
+
+```
+
+### Step 3: Wait for the victim to interact with the injected fields
+Since this is stored XSS, the fake username/password input fields render
+automatically for anyone viewing the comments — including the simulated
+victim, who (per the lab's design) enters credentials into what appears
+to be a normal form field.
+
+### Step 4: Retrieve the exfiltrated credentials
+Returned to the Collaborator tab and clicked "Poll now," revealing an
+incoming POST request containing the victim's username and password,
+concatenated together in the request body.
+
+### Step 5: Log in as the victim
+Used the captured username and password to log in directly as the victim
+through the normal login page.
+
+## How the Payload Works
+- Two new `<input>` elements are injected directly into the page via the
+  stored comment — one plain text field for a username, one
+  `type=password` field, styled and positioned by the browser exactly
+  like a normal, legitimate form field would be
+- The password field's `onchange` event handler fires as soon as the
+  victim finishes typing into it and moves focus away (e.g., pressing Tab
+  or clicking elsewhere) — no explicit "submit" button is even needed
+- `if(this.value.length)` ensures the exfiltration only fires if the
+  field actually contains a value, avoiding empty/blank submissions
+- `fetch(...)` sends a POST request containing `username.value + ':' +
+  this.value` (i.e. `username:password`, concatenated) to the attacker's
+  Collaborator server
+- `mode: 'no-cors'` is used to allow the cross-origin request to be sent
+  without being blocked by the browser's CORS policy, even though the
+  attacker can't read the *response* — only sending the data out is
+  needed, not reading anything back
+
+## Result
+Successfully captured the victim's live username and password via a fake,
+injected login form, then used those exact credentials to log directly
+into the victim's account, solving the lab.
+
+## What I Learned
+This lab demonstrated a distinct and arguably more severe consequence of
+XSS compared to cookie theft (Lab 22): rather than depending on stealing
+an existing session (which might expire or be invalidated), this technique
+captures the victim's actual raw credentials, which can then be used to
+log in at will, repeatedly, until the victim changes their password.
+It also highlighted how convincingly a stored XSS payload can mimic
+legitimate page functionality (a normal-looking login/input prompt) since
+the injected fields render as real, functional HTML form elements
+indistinguishable from genuine ones — this is essentially a phishing
+attack delivered directly through a trusted application, which makes it
+significantly more convincing than a typical external phishing site,
+since the victim never leaves the real, trusted domain. Combined with
+Lab 22, this rounds out a clear demonstration of both major real-world
+XSS exploitation goals: stealing existing session state (cookies) and
+capturing fresh credentials directly from the victim.
