@@ -1905,3 +1905,69 @@ typical "find an unescaped input" XSS. This lab, more than any other in
 this topic, would be a strong centerpiece to discuss in a technical
 interview, as it shows genuine understanding of browser internals and
 defense mechanisms rather than just payload memorization.
+
+
+
+## Lab 27: Reflected XSS with Event Handlers and href Attributes Blocked
+
+Topic: Cross-Site Scripting (Filter Bypass) | Difficulty: Expert
+
+## Vulnerability
+This application whitelists certain tags, but strictly blocks any event
+handler attributes (`onclick`, `onerror`, `onfocus`, etc.) AND blocks
+direct `href` attributes on anchor tags. This closes off both the
+event-handler technique (used throughout Labs 3, 4, 7, 10, 13, etc.) and
+the direct `javascript:` URI technique (used in Labs 5 and 8) at the same
+time.
+
+## Steps Taken
+
+### Step 1: Build the payload
+```html
+Click me
+```
+
+### Step 2: Deliver via URL
+Visited the crafted URL containing this payload, with a "Click me" label
+as required for the simulated victim to interact with it.
+
+## How the Payload Works
+- `<svg><a>...</a></svg>` creates an anchor element inside an SVG
+  container — SVG anchors behave similarly to regular HTML anchors but
+  exist in a slightly different part of the browser's rendering engine,
+  which affects which attributes are actively filtered
+- `<animate attributeName=href values=javascript:alert(1) />` is an SVG
+  **animation** element, not a static attribute assignment — instead of
+  writing `href="javascript:alert(1)"` directly (which would be blocked,
+  since the filter blocks direct `href` attributes), this uses SVG's
+  built-in animation system to *dynamically set* the `href` attribute's
+  value over time, entirely sidestepping the filter that only inspects
+  static/literal attribute assignments
+- `attributeName=href` tells the animation which attribute to target
+  (`href`), and `values=javascript:alert(1)` specifies what value to
+  animate it to
+- `<text x=20 y=20>Click me</text>` provides the clickable, visible label
+  text required for this SVG anchor to function as a clickable link
+- Once the animation applies the `javascript:alert(1)` value to the
+  anchor's `href`, clicking the link executes it exactly like the
+  `javascript:` URI technique from Labs 5 and 8
+
+## Result
+Successfully used an SVG `<animate>` element to dynamically inject a
+`javascript:` URI into an anchor's `href` attribute — bypassing both the
+event-handler blocklist and the direct-href blocklist simultaneously —
+and triggered `alert(1)` when the link was clicked, solving the lab.
+
+## What I Learned
+This lab reinforced a theme first seen in Lab 16 (SVG markup bypass):
+SVG's animation elements (`<animate>`, `<animatetransform>`, etc.) can be
+used to *dynamically set* attribute values that a filter only checks
+statically — meaning a filter that correctly blocks `href="javascript:..."`
+as a literal string can still be completely bypassed if the same value is
+instead assigned through an animation, since the filter never inspects
+values applied dynamically at render time. This is a genuinely subtle
+and non-obvious bypass technique, and reinforces why blocklist-style
+filters covering only "known dangerous attribute assignments" are
+fundamentally incomplete — SVG's animation system provides an entirely
+separate mechanism for setting practically any attribute to any value,
+outside the scope of typical attribute-level filtering.
