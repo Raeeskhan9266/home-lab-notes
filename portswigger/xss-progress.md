@@ -1802,3 +1802,106 @@ internally, finding a function it silently depends on, and deliberately
 breaking that dependency to defeat the protection entirely. This is the
 kind of technique that shows up in real disclosed AngularJS sandbox-escape
 CVEs, not just synthetic lab scenarios.
+
+
+
+
+## Lab 26: Reflected XSS with AngularJS Sandbox Escape and CSP Bypass
+
+Topic: Cross-Site Scripting (Sandbox Escape + CSP Bypass) | Difficulty: Expert
+
+## Vulnerability
+This lab combines two independent, hardened defenses: AngularJS's
+expression sandbox (as in Labs 11 and 25) AND a Content Security Policy
+(CSP) — an HTTP header-based browser defense that restricts what scripts
+are allowed to run and where they can come from, specifically designed to
+make XSS exploitation much harder even if an injection point exists.
+
+## What is CSP and Why It Matters Here
+A Content Security Policy tells the browser exactly which script sources,
+inline scripts, and event handlers are permitted to execute on a page. A
+well-configured CSP can block traditional payloads (`<script>` tags,
+`onerror`/`onclick` attributes) outright, even if the underlying injection
+point is completely unfiltered — this is why CSP is considered one of the
+strongest modern browser-level XSS mitigations. Bypassing it requires
+finding an execution path the policy doesn't account for.
+
+## Steps Taken
+
+### Step 1: Build the exploit
+On the exploit server, used a redirect script to send the victim to the
+vulnerable page with an embedded payload:
+```html
+
+location='https://YOUR-LAB-ID.web-security-academy.net/?search=<input id=x ng-focus=$event.composedPath()|orderBy:'(z=alert)(document.cookie)'>#x';
+
+```
+
+### Step 2: Deliver to victim
+Clicked "Store" and "Deliver exploit to victim."
+
+## How the Payload Works
+
+### Bypassing CSP using ng-focus
+Rather than using a blocked construct like `<script>` or a typical event
+handler attribute, the payload uses AngularJS's own `ng-focus` directive —
+this is processed by AngularJS itself (already trusted and loaded on the
+page), not treated by the browser as a new inline script, allowing it to
+execute even under a strict CSP that would otherwise block raw
+`onfocus="..."` attributes.
+
+### Triggering focus automatically
+Same technique as Lab 15 (custom tag lab): appending `#x` to the URL
+causes the browser to automatically scroll to and focus the element with
+`id="x"` on page load — triggering the `ng-focus` handler with zero victim
+interaction required.
+
+### Accessing the window object without referencing it directly
+- `$event` is AngularJS's reference to the actual browser event object
+  generated when focus occurs
+- `.composedPath()` (Chrome-specific, called `path` historically) returns
+  an array of every DOM element the event passed through, in order — the
+  very last element in this array is always the `window` object itself
+- AngularJS's sandbox normally blocks any expression that tries to
+  reference `window` directly (a core part of its security checks) — but
+  by reaching `window` indirectly, through an array returned by a
+  legitimate event property, the sandbox's direct-reference check is never
+  triggered at all
+
+### Using orderBy to reach window and execute code in its scope
+- `|orderBy:'(z=alert)(document.cookie)'` pipes the `composedPath()`
+  array into AngularJS's `orderBy` filter, with a custom sorting
+  expression as its argument
+- `orderBy` evaluates its sorting expression against *each* element in the
+  array being sorted — including, eventually, the `window` object itself
+  (the last element in the path array)
+- `(z=alert)` assigns the real `alert` function to a new variable `z`
+  *inside* the scope of whichever object is currently being evaluated —
+  when this happens to be the `window` object, `z` effectively becomes a
+  reference to `window.alert`
+- `(document.cookie)` immediately calls that newly assigned function,
+  passing `document.cookie` as its argument — resulting in
+  `alert(document.cookie)` executing, without ever writing the word
+  `window` in the payload at all
+
+## Result
+Successfully bypassed both the Content Security Policy and the AngularJS
+sandbox simultaneously, executing `alert(document.cookie)` by exploiting
+`ng-focus`, the `composedPath()` event property, and the `orderBy` filter
+together — solving the lab.
+
+## What I Learned
+This lab represented the combination of nearly every advanced concept
+covered across the XSS topic: using a framework's own trusted directives
+(`ng-focus`) to bypass CSP restrictions on inline event handlers, using
+legitimate browser/event APIs (`composedPath()`) to indirectly reach a
+normally-blocked object (`window`) without ever referencing it by name,
+and chaining that through AngularJS's `orderBy` filter to execute
+arbitrary code in the correct scope. This reflects genuinely advanced,
+real-world browser security research — CSP and framework sandboxes are
+each independently considered strong defenses, and combining bypasses for
+both in a single working exploit demonstrates a level of depth well beyond
+typical "find an unescaped input" XSS. This lab, more than any other in
+this topic, would be a strong centerpiece to discuss in a technical
+interview, as it shows genuine understanding of browser internals and
+defense mechanisms rather than just payload memorization.
