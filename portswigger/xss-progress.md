@@ -1971,3 +1971,101 @@ filters covering only "known dangerous attribute assignments" are
 fundamentally incomplete — SVG's animation system provides an entirely
 separate mechanism for setting practically any attribute to any value,
 outside the scope of typical attribute-level filtering.
+
+
+
+## Lab 28: Reflected XSS in a JavaScript URL with Some Characters Blocked
+
+Topic: Cross-Site Scripting (Character-Restricted Filter Bypass) | Difficulty: Expert
+
+## Vulnerability
+User input is reflected inside a JavaScript URL context. The application
+blocks certain characters specifically to prevent common XSS techniques —
+including, critically, blocking **spaces** and standard function-call
+syntax patterns. This meant a straightforward payload like
+`alert('1337')` was not directly usable, requiring an entirely different
+approach built around JavaScript's own quirky language mechanics.
+
+## The Payload
+
+'},x=x=>{throw/**/onerror=alert,1337},toString=x,window+'',{x:'
+
+
+## How the Payload Works (step by step)
+
+### Step 1: Get around the no-spaces restriction
+
+throw/**/onerror=alert,1337
+
+Since literal spaces were blocked, a block comment (`/**/`) is used
+*instead* of a space character — JavaScript treats a comment the same as
+whitespace for parsing purposes, so `throw/**/onerror` is functionally
+identical to `throw onerror`, without ever using an actual space.
+
+### Step 2: Use throw + the comma operator to call alert with an argument
+- `onerror=alert` assigns the built-in `alert` function to the global
+  `onerror` exception handler — this means whenever an uncaught JavaScript
+  error/exception occurs, `alert` will automatically be invoked, receiving
+  the error details as its argument
+- `throw ..., 1337` uses the JavaScript comma operator to throw an
+  exception where `1337` becomes part of what gets passed along when the
+  exception fires — ensuring the required string `1337` ends up inside
+  the resulting `alert` call
+
+### Step 3: Wrap the throw statement inside an arrow function
+
+x=x=>{throw ... }
+
+`throw` is a JavaScript **statement**, not an expression — meaning it
+can't normally be used in places where only expressions are allowed (like
+directly inline in this injection context). To work around this, the
+throw is wrapped inside an arrow function body (`x => { throw ... }`),
+which turns the whole thing into a callable function stored in variable
+`x`. Defining a function like this doesn't execute the `throw` immediately
+— it only runs when the function `x` is actually called later.
+
+### Step 4: Trigger the function via forced type coercion
+
+toString=x, window+''
+
+- `toString=x` overwrites the current object's (or window's, depending on
+  context) `toString` method with the function created in Step 3
+- `window+''` forces JavaScript to convert the `window` object into a
+  string, in order to perform the `+` concatenation with an empty string
+- Converting an object to a string automatically calls that object's
+  `toString()` method internally — since `toString` was just overwritten
+  to point at function `x` (Step 3), this string coercion is what actually
+  **calls** the function, finally executing the wrapped `throw` statement
+
+### Step 5: Exception fires onerror, which calls alert
+The `throw` executing (triggered indirectly via the forced `toString`
+call) raises an exception. Since `onerror` was set to `alert` in Step 2,
+this uncaught exception automatically invokes `alert`, with `1337`
+included in the resulting message — satisfying the lab's requirement.
+
+### Step 6: Delivery
+The exploit only fires when the victim clicks "Back to blog" at the
+bottom of the page, since that's the point at which the surrounding
+JavaScript context actually executes with the injected values in place.
+
+## Result
+Successfully triggered `alert` containing `1337` by chaining together
+comment-based space avoidance, the comma operator, arrow-function
+wrapping of a throw statement, and forced type coercion via `toString` —
+without ever using a space character or a direct function call syntax —
+solving the lab.
+
+## What I Learned
+This was, by a clear margin, the most conceptually dense lab in the entire
+XSS topic. It didn't rely on any HTML injection, tag, or event-handler
+attribute at all — the entire exploit lived within JavaScript's own
+language quirks: using comments as whitespace substitutes, exploiting the
+distinction between statements and expressions (and using arrow functions
+to bridge that gap), and forcing code execution indirectly through type
+coercion (`toString` being silently invoked during string concatenation)
+rather than any direct function call. This reflects the kind of deep
+JavaScript engine knowledge that separates basic payload replication from
+genuine security research — recognizing that *any* implicit function call
+triggered by the JavaScript engine itself (type coercion, exception
+handling, etc.) can become an execution vector when direct, explicit
+syntax is blocked by a filter.
