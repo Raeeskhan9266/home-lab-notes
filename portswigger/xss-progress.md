@@ -1698,3 +1698,107 @@ practical use of `XMLHttpRequest` for chaining multiple asynchronous
 requests together within a single XSS payload — fetching data from one
 endpoint, parsing it, and using the extracted value to construct a second,
 authenticated request, all automatically and invisibly to the victim.
+
+
+
+## Lab 25: Reflected XSS with AngularJS Sandbox Escape Without Strings
+
+Topic: Cross-Site Scripting (Framework Sandbox Escape) | Difficulty: Expert
+
+## Vulnerability
+Similar AngularJS `ng-app` context as Lab 11, but this lab imposed two
+extra restrictions: the `$eval` function (used in Lab 11's payload) is not
+available, and no string literals (quotes) can be used at all in the
+payload. AngularJS actually has a built-in "sandbox" specifically designed
+to block expressions that try to access dangerous JavaScript constructs
+(like `Function` constructors) — Lab 11 exploited an older AngularJS
+version where this sandbox was weaker; this lab required a genuine
+sandbox *escape* technique on a more hardened version.
+
+## Why No Strings Were Allowed
+Normally, XSS payloads (including Lab 11's) rely on string literals (text
+inside quotes) to construct malicious code, such as `'alert(1)'` passed to
+a constructor. This lab's environment specifically blocked any expression
+containing a quote character, meaning any needed "string" first had to be
+*constructed* dynamically from non-string values, using only AngularJS/
+JavaScript expression syntax.
+
+## The Payload (decoded from URL encoding)
+```javascript
+toString().constructor.prototype.charAt=[].join;
+[1,2]|orderBy:toString().constructor.fromCharCode(120,61,97,108,101,114,116,40,49,41)
+```
+
+## How the Payload Works (step by step)
+
+### Step 1: Create a string without quotes
+`toString()` — calling this on an implicit object (like a number) returns
+its value *as a string*, entirely without needing to type any quote
+characters. This is the core trick used throughout this payload whenever
+a string value is needed.
+
+### Step 2: Access the String prototype and JavaScript's Function machinery
+`.constructor` — accessed on the string returned by `toString()`, this
+retrieves the `String` constructor function itself, which is a gateway to
+broader JavaScript internals that AngularJS's sandbox normally tries to
+block direct access to.
+
+### Step 3: Break the sandbox by overwriting charAt
+
+.prototype.charAt=[].join;
+
+This deliberately corrupts the built-in `charAt` method that exists on
+**every string** in the page, replacing it with the array `join` method
+instead. AngularJS's sandbox internally relies on calling `charAt` as part
+of its own security checks when evaluating expressions — by overwriting
+this function globally, those internal safety checks stop behaving as
+expected, effectively breaking the sandbox's ability to properly validate
+subsequent expressions.
+
+### Step 4: Use the orderBy filter as an execution vector
+
+[1,2]|orderBy:...
+
+The `orderBy` filter (a built-in AngularJS array-sorting feature) accepts
+an expression as its sorting argument. Because the sandbox is now broken
+(from Step 3), this argument can contain code that would normally be
+blocked.
+
+### Step 5: Build the actual payload string from character codes
+
+toString().constructor.fromCharCode(120,61,97,108,101,114,116,40,49,41)
+
+`fromCharCode` builds a string out of individual character codes — each
+number corresponds to one character: `120,61,97,...` decodes to the text
+`x=alert(1)`. This avoids ever typing the string `alert(1)` directly,
+sidestepping the no-quotes restriction entirely while still constructing
+that exact executable text.
+
+### Step 6: Execution
+With the sandbox's internal checks broken (Step 3) and a constructed
+`x=alert(1)` expression passed into the `orderBy` filter (Step 5),
+AngularJS evaluates this as a real JavaScript assignment/expression,
+executing `alert(1)`.
+
+## Result
+Successfully broke AngularJS's expression sandbox by corrupting the
+`charAt` prototype method (used internally by the sandbox's own security
+checks), then used the `orderBy` filter combined with `fromCharCode` to
+construct and execute `alert(1)` — all without using a single quote
+character or the `$eval` function, solving the lab.
+
+## What I Learned
+This was, by a significant margin, the most advanced lab completed so far.
+It went beyond simply finding an unfiltered injection point (Labs 1–24)
+into actually defeating a purpose-built security mechanism (AngularJS's
+expression sandbox) by corrupting an internal function it silently relies
+on. It also demonstrated an important general technique: any time string
+literals are blocked, values can often still be constructed dynamically
+using method calls like `toString()` and `fromCharCode()`, entirely
+avoiding the need for quote characters. This lab is a genuine example of
+security research methodology — rather than looking for a known payload,
+it required understanding how AngularJS's sandbox validates expressions
+internally, finding a function it silently depends on, and deliberately
+breaking that dependency to defeat the protection entirely. This is the
+kind of technique that shows up in real disclosed AngularJS sandbox-escape
+CVEs, not just synthetic lab scenarios.
