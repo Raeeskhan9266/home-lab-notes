@@ -1,6 +1,6 @@
 # PortSwigger Web Security Academy Progress
 
-## Lab 1: SQL Injection — WHERE Clause Bypass (Retrieving Hidden Data)
+## Lab 1: SQL Injection WHERE Clause Bypass (Retrieving Hidden Data)
 
 Topic: SQL Injection | Difficulty: Apprentice
 
