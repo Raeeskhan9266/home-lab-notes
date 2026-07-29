@@ -265,7 +265,7 @@ wrong."
 
 
 ## Lab 4: CSRF Where Token Is Not Tied to User Session
-Completed: [aaj ki date]
+
 Topic: Cross-Site Request Forgery | Difficulty: Practitioner
 
 ## Vulnerability
