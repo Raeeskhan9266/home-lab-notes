@@ -179,3 +179,84 @@ legitimate client "should" use — if the server logic accepts multiple
 methods for the same state-changing action, every one of those paths needs
 identical protection, or the weakest one effectively determines the real
 security of the entire feature.
+
+
+
+## Lab 3: CSRF Where Token Validation Depends on Token Being Present
+
+Topic: Cross-Site Request Forgery | Difficulty: Practitioner
+
+## Vulnerability
+The email change functionality validates the CSRF token correctly *if* one
+is submitted — but the server-side logic only performs this check when a
+`csrf` parameter actually exists in the request. If the parameter is
+omitted entirely, the validation step is skipped altogether, and the
+request is processed as if it were valid.
+
+## Steps Taken
+
+### Step 1: Confirm normal token validation
+Logged in and submitted the "Update email" form normally, confirming (via
+Burp Suite) that the request included a `csrf` parameter, and that
+tampering with its value caused the request to be rejected.
+
+### Step 2: Test removing the token parameter entirely
+Rather than submitting an invalid token, removed the `csrf` field from the
+request completely and resubmitted it. The request succeeded — revealing
+that the validation logic only runs a check *if* the field is present,
+rather than requiring it unconditionally.
+
+### Step 3: Build the exploit without a CSRF token field
+```html
+<html>
+  <body>
+    <form action="https://[lab-id].web-security-academy.net/my-account/change-email" method="POST">
+      <input type="hidden" name="email" value="yello&#64;hello&#46;com" />
+      <input type="submit" value="Submit request" />
+    </form>
+    <script>
+      history.pushState('', '', '/');
+      document.forms[0].submit();
+    </script>
+  </body>
+</html>
+```
+No `csrf` input field is included at all — the form only submits the
+`email` parameter.
+
+### Step 4: Deliver to victim
+Stored and delivered the exploit — the victim's browser auto-submitted
+the forged request, and since no CSRF token was present, the server's
+flawed validation logic let it through unchecked.
+
+## How the Exploit Works
+- The server's CSRF defense appears to follow logic like: *"if a `csrf`
+  parameter is submitted, verify it matches the session; otherwise, skip
+  validation"* — rather than the correct logic, which should always
+  require a valid, present token for any state-changing request
+- By constructing a form that never includes the `csrf` field at all
+  (rather than including a blank or incorrect one), the exploit avoids
+  triggering the validation branch entirely
+- The rest of the exploit mechanism (auto-submitting hidden form, using
+  the victim's existing authenticated session) is identical to Lab 1
+
+## Result
+Successfully bypassed CSRF protection by omitting the token parameter
+entirely, exploiting a validation flow that only checks the token *if*
+it's present, changing the victim's email address, solving the lab.
+
+## What I Learned
+This lab, combined with Lab 2, reinforced a broader theme: CSRF
+protections are frequently implemented with subtle logical gaps rather
+than being completely absent. Here, the flaw wasn't in *how* the token
+was validated (the comparison logic itself may have been perfectly
+correct) but in *when* that validation was triggered — conditioning the
+check on the parameter's mere presence, rather than enforcing its
+presence as a hard requirement. This is a valuable lesson for secure
+development: any security check should default to "deny" and only allow
+the request through after an explicit, unconditional pass — never
+structured so that simply omitting a piece of data skips the check
+altogether. This is a very realistic bug pattern, since developers often
+write validation as "if token exists, check it" without considering the
+"what if it's just missing" case as equally dangerous as "what if it's
+wrong."
