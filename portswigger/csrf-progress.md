@@ -107,3 +107,75 @@ topic, where a CSRF token was stolen via XSS rather than being absent
 entirely — together, these labs show both sides of CSRF protection
 failure: no token at all (this lab) versus a token that exists but can be
 read and reused via a separate vulnerability.
+
+
+
+## Lab 2: CSRF Where Token Validation Depends on Request Method
+
+Topic: Cross-Site Request Forgery | Difficulty: Practitioner
+
+## Vulnerability
+The email change functionality does implement CSRF token validation —
+but only for requests submitted via one HTTP method. Switching the same
+request to a different method (while keeping the same parameters) bypasses
+the token check entirely, since the server-side validation logic wasn't
+applied consistently across all methods that route to the same
+functionality.
+
+## Steps Taken
+
+### Step 1: Compare the same action across HTTP methods
+Logged in using the provided credentials and submitted the "Update email"
+form normally, observing (via Burp Suite) that the resulting POST request
+required a valid CSRF token to succeed.
+
+### Step 2: Test the same endpoint using GET instead of POST
+Discovered that the application also accepts the exact same email-change
+action as a **GET** request, with the email value passed as a URL query
+parameter — and critically, this GET-based route does **not** enforce the
+CSRF token check that the POST route does.
+
+### Step 3: Build the exploit
+Since a GET request requires no form submission at all — simply loading
+the URL is enough to trigger it — the exploit only needed to redirect
+the victim's browser to the vulnerable URL:
+```html
+<script>
+location = 'https://[lab-id].web-security-academy.net/my-account/change-email?email=yello@yello.com';
+</script>
+```
+
+### Step 4: Deliver to victim
+Stored this on the exploit server and delivered it — the victim's browser
+automatically navigated to the crafted URL, triggering the email change
+using their authenticated session, with no CSRF token required at all.
+
+## How the Exploit Works
+- `location = '...'` in JavaScript immediately redirects the current page
+  to the specified URL the moment the malicious page loads — no form,
+  no button, no user interaction needed at all, since a GET request is
+  triggered simply by *navigating* to a URL
+- Because the vulnerable endpoint accepts the email-change action via
+  GET **without** requiring the CSRF token that the POST version enforces,
+  this redirect alone was suffient to change the victim's email
+- This is an even simpler delivery mechanism than Lab 1's auto-submitting
+  form, since GET requests don't require any form submission step at all —
+  just loading the URL is the "request"
+
+## Result
+Successfully bypassed CSRF token validation by using an alternate HTTP
+method (GET) that the server failed to protect, changing the victim's
+email address via a simple page redirect, solving the lab.
+
+## What I Learned
+This lab exposed a common real-world CSRF defense mistake: implementing
+token validation for one HTTP method (typically POST, since that's the
+"expected" way to submit the form) while forgetting that the same backend
+functionality might also be reachable through a different method (GET)
+that bypasses the check entirely. This reinforces that CSRF protection
+needs to be enforced consistently at the level of the *endpoint/action*
+itself, not tied to assumptions about which specific HTTP method a
+legitimate client "should" use — if the server logic accepts multiple
+methods for the same state-changing action, every one of those paths needs
+identical protection, or the weakest one effectively determines the real
+security of the entire feature.
