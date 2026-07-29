@@ -260,3 +260,94 @@ altogether. This is a very realistic bug pattern, since developers often
 write validation as "if token exists, check it" without considering the
 "what if it's just missing" case as equally dangerous as "what if it's
 wrong."
+
+
+
+
+## Lab 4: CSRF Where Token Is Not Tied to User Session
+Completed: [aaj ki date]
+Topic: Cross-Site Request Forgery | Difficulty: Practitioner
+
+## Vulnerability
+The application generates a CSRF token and validates it correctly on
+every request — but the token is never linked to the specific user's
+session. This means the server only checks "is this a token my system
+has ever issued to *anyone*?" rather than "is this the specific token
+belonging to *this* user's current session?" As a result, an attacker can
+obtain a valid token using their own account, and that same token will
+be accepted for a completely different victim's session.
+
+## Steps Taken
+
+### Step 1: Compare tokens across two different accounts
+Logged in separately as both provided accounts (`wiener:peter` and
+`carlos:montoya`) and submitted the "Update email" form as each. Observed
+that each login generated a CSRF token, but testing showed these tokens
+weren't uniquely bound to a single session — a token obtained under one
+account's session could still be successfully submitted using a
+completely different session/account.
+
+### Step 2: Confirm the token is only checked for general validity
+Determined that the server's validation logic simply checks whether a
+submitted token matches *some* valid, previously-issued token in its
+records — not specifically the token that was issued to the current
+requester's own session.
+
+### Step 3: Build the exploit using a token obtained from my own account
+```html
+<html>
+  <body>
+    <form action="https://[lab-id].web-security-academy.net/my-account/change-email" method="POST">
+      <input type="hidden" name="email" value="hello&#64;hello&#46;com" />
+      <input type="hidden" name="csrf" value="[a valid token obtained from my own account]" />
+      <input type="submit" value="Submit request" />
+    </form>
+    <script>
+      history.pushState('', '', '/');
+      document.forms[0].submit();
+    </script>
+  </body>
+</html>
+```
+
+### Step 4: Deliver to victim
+Stored and delivered the exploit — even though the embedded CSRF token
+was originally generated for *my own* account/session (not the victim's),
+the server accepted it as valid when submitted using the victim's session,
+successfully changing their email.
+
+## How the Exploit Works
+- Properly implemented CSRF protection should tie each token to the exact
+  session it was issued for, so that even a completely valid, real,
+  unexpired token from one user's session is rejected if submitted under
+  a different user's session
+- Here, the server's check was effectively: "does this token exist/was it
+  ever validly issued?" — a check that any attacker can trivially satisfy
+  by simply logging into their *own* account first, grabbing a legitimately
+  issued token, and reusing that exact token in an exploit aimed at a
+  victim's session
+- Since the attacker doesn't need to steal or predict the victim's actual
+  token at all (unlike a properly-implemented system, where this would be
+  required), this defense provides essentially no real protection —
+  it just adds an extra static-looking parameter that doesn't verify
+  anything meaningful about *who* is making the request
+
+## Result
+Successfully reused a CSRF token generated from my own account's session
+to forge a request against a victim's session, since the server never
+verified that the submitted token actually belonged to the requester's
+specific session, solving the lab.
+
+## What I Learned
+This lab was a critical lesson in what makes a CSRF token defense
+*actually* effective versus merely present: the token itself isn't the
+security mechanism — the *binding* between the token and the specific
+user's session is. A CSRF token that isn't cryptographically tied to and
+verified against the current session is essentially just an extra
+parameter, providing a false sense of security while contributing almost
+nothing to actual protection, since any attacker can generate their own
+valid token via their own account and reuse it against anyone. This
+reinforces that secure CSRF implementations must validate two things
+together: that the token is valid, AND that it matches the specific
+session making the request — checking only the first condition (as seen
+in this lab) is a common and dangerous implementation mistake.
