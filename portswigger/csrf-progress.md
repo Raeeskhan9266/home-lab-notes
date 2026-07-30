@@ -355,3 +355,103 @@ in this lab) is a common and dangerous implementation mistake.
 
 
 
+## Lab 5: CSRF Where Token Is Tied to Non-Session Cookie
+
+Topic: Cross-Site Request Forgery | Difficulty: Practitioner
+
+## Vulnerability
+This application's CSRF defense is a step more sophisticated than Lab 4 —
+the token IS tied to something, but that something is a **separate cookie**
+(e.g. `csrfKey`), completely independent of the actual session cookie
+used for authentication. Since these two cookies aren't linked to each
+other, an attacker who can get their own `csrfKey` cookie value (and its
+matching token) planted into the *victim's* browser can make a token
+generated under the attacker's control appear valid for the victim's
+session.
+
+## Why This Is Different from Lab 4
+- **Lab 4:** the token wasn't tied to any session at all — any valid
+  token worked everywhere
+- **This lab:** the token IS properly tied to a cookie value — but that
+  cookie itself is separate from the session cookie, meaning if an
+  attacker can force their own known cookie value onto the victim's
+  browser, the token check will still pass, since it only verifies
+  consistency between the token and this other cookie — not the actual
+  logged-in session
+
+## Steps Taken
+
+### Step 1: Identify the separate CSRF cookie
+Compared requests across both provided accounts and observed a distinct
+cookie (`csrfKey`) alongside the standard session cookie — confirming the
+CSRF token was validated against this separate cookie's value, not the
+session itself.
+
+### Step 2: Find a way to plant a chosen cookie value on the victim
+Identified a header injection vulnerability in the site's search
+functionality — the `search` parameter was reflected in a way that
+allowed injecting raw HTTP response headers, including a new `Set-Cookie`
+header, via CRLF (carriage return/line feed) injection:
+
+search=test%0d%0aSet-Cookie:%20csrfKey=hpx4F8LbD6J5eRWJafPDvL8sQmG7B1Ob%3b%20SameSite=None
+
+`%0d%0a` represents an encoded CRLF sequence, which — if not properly
+sanitized — terminates the current HTTP header/response line and allows
+injecting an entirely new header, in this case forcing the victim's
+browser to set a `csrfKey` cookie value of the attacker's choosing.
+
+### Step 3: Obtain a matching, valid CSRF token for that same cookie value
+Using an account under the attacker's own control, generated a request
+where the `csrfKey` cookie matched the value being injected, and captured
+the corresponding valid CSRF token the server issued for that pairing.
+
+### Step 4: Build the combined exploit
+```html
+<html>
+  <body>
+    <form action="https://[lab-id].web-security-academy.net/my-account/change-email" method="POST">
+      <input type="hidden" name="email" value="hello1@hello.com" />
+      <input type="hidden" name="csrf" value="[matching token for the injected csrfKey]" />
+      <input type="submit" value="Submit request" />
+    </form>
+    <img src="https://[lab-id].web-security-academy.net/?search=test%0d%0aSet-Cookie:%20csrfKey=[chosen-value]%3b%20SameSite=None"
+         onerror="document.forms[0].submit()">
+  </body>
+</html>
+```
+
+### Step 5: Deliver to victim
+- The `<img>` tag's broken `src` (pointing at the header-injection URL)
+  fails to load as a real image, triggering its `onerror` handler
+- Before that error fires, though, the browser processes the injected
+  `Set-Cookie` header from the response, silently setting the victim's
+  `csrfKey` cookie to the attacker-chosen value
+- Once `onerror` fires, the form (containing the matching, pre-obtained
+  CSRF token) submits automatically
+- Since the victim's browser now holds the exact `csrfKey` cookie value
+  the submitted token was originally generated for, the server's
+  token-to-cookie consistency check passes — even though the actual
+  session cookie (authentication) still belongs to the victim
+
+## Result
+Successfully chained a header injection (CRLF) vulnerability with a CSRF
+token that was tied only to a separate, non-session cookie, forcing a
+matching cookie value onto the victim's browser and reusing a
+pre-obtained valid token to change their email address, solving the lab.
+
+## What I Learned
+This lab was a strong example of vulnerability chaining, similar in spirit
+to XSS Lab 24 (chaining XSS with CSRF token theft) but using a
+completely different combination: a header/response-splitting
+vulnerability combined with a CSRF defense that was almost correct, but
+tied to the wrong anchor point. It reinforced that a CSRF token must be
+bound specifically to the user's **authenticated session** — binding it
+to any other cookie, even one that looks session-like, creates an
+exploitable gap the moment an attacker finds any way (like a header
+injection bug elsewhere on the site) to control that cookie's value in
+the victim's browser. This also introduced CRLF/header injection as a
+distinct vulnerability class in its own right — encoding `\r\n` sequences
+into an input that gets reflected into HTTP headers can allow an attacker
+to inject entirely new headers, including `Set-Cookie`, giving them
+partial control over the victim's browser state without ever needing
+direct script execution (XSS).
