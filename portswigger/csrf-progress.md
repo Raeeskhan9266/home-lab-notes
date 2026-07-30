@@ -556,3 +556,113 @@ attempts) — it trades server-side storage requirements for a security
 assumption (that attackers can't set cookies on the target domain) that
 frequently doesn't hold in practice, especially on applications with any
 other cookie-setting vulnerability like this one.
+
+
+
+
+## Lab 7: SameSite Lax Bypass via Method Override
+
+Topic: Cross-Site Request Forgery (SameSite Bypass) | Difficulty: Practitioner
+
+## Vulnerability
+This application has no CSRF token at all — but it relies on modern
+browsers' default `SameSite=Lax` cookie behavior as an implicit defense.
+Under `Lax` restrictions, cookies are NOT sent on most cross-site
+requests, but there's a specific exception: cookies ARE still sent on
+cross-site **GET** requests that involve a top-level navigation (i.e.
+the browser actually navigating to a new URL, like clicking a link or
+being redirected — not a background AJAX/fetch call). Combined with a
+separate flaw (accepting a method override parameter), this exception
+became fully exploitable.
+
+## What Is SameSite=Lax and Why It Normally Helps
+Since 2020, browsers apply `SameSite=Lax` as the *default* cookie
+behavior when a site doesn't explicitly set a `SameSite` attribute. This
+was introduced specifically as a broad, built-in mitigation against CSRF:
+under `Lax`, cross-site POST requests (the traditional CSRF vector used
+in Labs 1–6) no longer include the victim's cookies at all, which would
+normally make classic form-based CSRF attacks like Lab 1 ineffective by
+default on modern browsers.
+
+## Steps Taken
+
+### Step 1: Confirm no CSRF token exists
+Studied the `POST /my-account/change-email` request via Burp Suite's
+Proxy history and confirmed no unpredictable CSRF token was present at all.
+
+### Step 2: Identify that SameSite=Lax is the only real protection
+Checked the `POST /login` response headers and confirmed the session
+cookie was set without any explicit `SameSite` attribute — meaning the
+browser defaults to `Lax`, which should normally block a cross-site POST
+request (like the email-change action) from including the session cookie.
+
+### Step 3: Test converting the request to GET
+Sent the change-email request to Burp Repeater and used "Change request
+method" to convert it to GET. The server rejected this, since the
+endpoint was coded to only accept POST.
+
+### Step 4: Discover a method override parameter
+Tried adding a `_method` parameter to the GET request's query string:
+
+GET /my-account/change-email?email=foo%40web-security-academy.net&_method=POST
+
+The server accepted this — revealing that the backend framework silently
+supports overriding the actual HTTP method via this parameter, treating a
+GET request carrying `_method=POST` as if it were a genuine POST request.
+
+### Step 5: Combine both findings into a working exploit
+Since the request could now effectively perform the sensitive POST
+action while technically being sent as a GET request, and GET requests
+DO include cookies under `SameSite=Lax` during a top-level navigation,
+built the following exploit:
+```html
+<script>
+    document.location = "https://[lab-id].web-security-academy.net/my-account/change-email?email=hello@hello.com&_method=POST";
+</script>
+```
+
+### Step 6: Deliver to victim
+Stored and delivered the exploit — `document.location = ...` forces a
+genuine top-level navigation (exactly the condition under which `Lax`
+still permits the cookie to be sent), successfully triggering the
+email-change action using the victim's authenticated session.
+
+## How the Exploit Works
+- `document.location = "..."` (unlike a background `fetch()` or an
+  AJAX-submitted form) causes the *entire browser tab* to navigate to
+  the new URL — this is what qualifies as a top-level navigation under
+  `SameSite=Lax`'s exception rule
+- Because the request is a real GET request, the `Lax` policy allows the
+  victim's session cookie to be attached to it, even though it's
+  cross-site (initiated from the attacker's exploit page)
+- The `_method=POST` query parameter exploits a separate, unrelated
+  convenience feature (common in backend frameworks that support HTML
+  forms, which can only natively send GET/POST) that lets a client
+  specify the "real" intended method — without realizing this creates a
+  way to perform POST-equivalent actions through a GET request, which has
+  very different CSRF exposure characteristics
+- Combining these two individually low-risk-seeming details (SameSite's
+  GET exception + a method override parameter) creates a fully working
+  CSRF exploit against an application with no explicit CSRF token at all
+
+## Result
+Successfully bypassed SameSite=Lax cookie protection — normally an
+effective, browser-level CSRF mitigation — by combining a top-level GET
+navigation with a method-override parameter that caused the server to
+treat it as the sensitive POST action, changing the victim's email
+address, solving the lab.
+
+## What I Learned
+This lab was a significant real-world lesson: SameSite cookie attributes
+are a strong, modern, broadly effective CSRF mitigation, but they are not
+a complete substitute for proper server-side CSRF tokens, precisely
+because of edge cases like this one. The core issue wasn't a flaw in
+SameSite itself — it behaved exactly as designed — but rather those two
+separate, individually reasonable-looking features (allowing top-level
+navigations to carry cookies under Lax, and supporting method-override
+parameters for framework convenience) combined to recreate the exact
+attack surface SameSite was meant to close. This reinforces a recurring
+theme across the whole CSRF topic: defense-in-depth matters, since relying
+on any single mitigation (whether a token implementation or a browser-
+level cookie policy) can be undermined by an unrelated feature elsewhere
+in the same application that reintroduces the original risk.
