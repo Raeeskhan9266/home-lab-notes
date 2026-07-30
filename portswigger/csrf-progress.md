@@ -455,3 +455,104 @@ into an input that gets reflected into HTTP headers can allow an attacker
 to inject entirely new headers, including `Set-Cookie`, giving them
 partial control over the victim's browser state without ever needing
 direct script execution (XSS).
+
+
+
+## Lab 6: CSRF Where Token Is Duplicated in Cookie (Double-Submit Defense Bypass)
+
+Topic: Cross-Site Request Forgery | Difficulty: Practitioner
+
+## Vulnerability
+The application uses the "double submit cookie" pattern — a common CSRF
+prevention technique where the server checks that a token submitted in
+the request body/parameter matches a token also present in a cookie,
+without needing any server-side storage of issued tokens at all. This
+technique is inherently insecure whenever an attacker can independently
+set both values themselves, since the "check" only ever verifies the two
+submitted values match each other — not that either one was legitimately
+issued by the server for that session.
+
+## What Is "Double Submit Cookie" and Why It's Risky Here
+The idea behind double-submit is: an attacker (without XSS) normally
+can't read or set cookies for a domain they don't control, so if the
+cookie value matches the submitted form/parameter value, it's assumed the
+request must have originated from a legitimate page that could read that
+cookie. This assumption completely breaks down if an attacker has *any*
+alternative way to set a cookie on the victim's browser for that domain —
+such as a header injection vulnerability, as seen again in this lab.
+
+## Steps Taken
+
+### Step 1: Confirm the double-submit pattern
+Observed that the CSRF token submitted in the form body was also expected
+to match a `csrf` cookie value — with no indication that the server
+tracks or validates the token against anything beyond this simple
+cookie-vs-parameter comparison.
+
+### Step 2: Reuse the same header injection technique from Lab 5
+The same CRLF/header injection point (via the `search` parameter) allowed
+setting an arbitrary `csrf` cookie value on the victim's browser:
+
+search=test%0d%0aSet-Cookie:%20csrf=fake%3b%20SameSite=None
+
+
+### Step 3: Build the exploit using a self-chosen, arbitrary token value
+Since the attacker can now set the cookie to *any* value using the header
+injection, there's no need to steal or reuse a real, server-issued token
+at all — a completely made-up value (`fake`) works just as well, as long
+as the exact same value is used in both the injected cookie and the
+submitted form parameter:
+```html
+<html>
+  <body>
+    <form action="https://[lab-id].web-security-academy.net/my-account/change-email" method="POST">
+      <input type="hidden" name="email" value="hello@hello.com" />
+      <input type="hidden" name="csrf" value="fake" />
+      <input type="submit" value="Submit request" />
+    </form>
+    <img src="https://[lab-id].web-security-academy.net/?search=test%0d%0aSet-Cookie:%20csrf=fake%3b%20SameSite=None"
+         onerror="document.forms[0].submit();"/>
+  </body>
+</html>
+```
+
+### Step 4: Deliver to victim
+The broken `<img>` tag's `onerror` handler fires after the header
+injection sets the victim's `csrf` cookie to `fake`; the form then
+auto-submits with the matching `csrf=fake` parameter, satisfying the
+double-submit check entirely with attacker-invented values.
+
+## How the Exploit Works
+- The server's validation logic is simply: *"does the submitted `csrf`
+  parameter equal the `csrf` cookie value?"* — with no reference to any
+  actual, securely-generated, per-session token at all
+- Since both the cookie (via header injection) and the form parameter are
+  entirely attacker-controlled in this scenario, the attacker can set both
+  to any matching value they like — including something as trivial as the
+  literal string `"fake"` — and the check will still pass
+- This demonstrates that double-submit cookie defenses are only secure
+  when there is truly no way for an attacker to set cookies on the
+  victim's browser for the target domain; the moment any such mechanism
+  exists (header injection here, but it could equally be another
+  vulnerability like XSS), the entire defense collapses
+
+## Result
+Successfully bypassed a double-submit cookie CSRF defense by using a
+header injection vulnerability to plant an arbitrary, self-chosen cookie
+value, then submitting a form with a matching arbitrary token value,
+solving the lab.
+
+## What I Learned
+This lab was a direct continuation of the header-injection technique from
+Lab 5, but demonstrated an even simpler underlying weakness: the
+double-submit cookie pattern doesn't actually require stealing or
+predicting any real, meaningful data at all — since the check is just a
+self-referential comparison, an attacker with cookie-setting ability can
+trivially satisfy it using entirely made-up values. This reinforced why
+double-submit cookie CSRF protection is generally considered a weaker
+defense pattern compared to server-side, session-bound tokens (as would
+be correctly implemented, in contrast to Labs 1–5's various flawed
+attempts) — it trades server-side storage requirements for a security
+assumption (that attackers can't set cookies on the target domain) that
+frequently doesn't hold in practice, especially on applications with any
+other cookie-setting vulnerability like this one.
