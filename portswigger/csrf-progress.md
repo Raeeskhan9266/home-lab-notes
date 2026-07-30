@@ -351,3 +351,8 @@ reinforces that secure CSRF implementations must validate two things
 together: that the token is valid, AND that it matches the specific
 session making the request — checking only the first condition (as seen
 in this lab) is a common and dangerous implementation mistake.
+
+
+
+
+CSRF where token is tied to non-session cookie
