@@ -666,3 +666,122 @@ theme across the whole CSRF topic: defense-in-depth matters, since relying
 on any single mitigation (whether a token implementation or a browser-
 level cookie policy) can be undermined by an unrelated feature elsewhere
 in the same application that reintroduces the original risk.
+
+
+
+## Lab 8: SameSite Strict Bypass via Client-Side Redirect
+
+Topic: Cross-Site Request Forgery (SameSite Bypass) | Difficulty: Expert
+
+## Vulnerability
+Unlike Lab 7 (where `SameSite=Lax` was the default), this application
+explicitly sets `SameSite=Strict` on its session cookie — the strongest
+setting, which blocks the cookie from being sent on **any** cross-site
+request at all, including top-level GET navigations that `Lax` would
+still allow. This should make CSRF essentially impossible directly.
+However, a client-side redirect "gadget" elsewhere on the site, combined
+with path traversal, created an indirect way around this.
+
+## Why SameSite=Strict Is Normally Very Strong
+`Strict` cookies are only sent when a request originates from the exact
+same site the cookie belongs to — meaning even clicking a link from an
+external site to this application won't include the session cookie on the
+very first request. This defeats the SameSite=Lax bypass technique used
+in Lab 7 entirely, since that relied on the cookie still being sent during
+a cross-site top-level navigation.
+
+## Steps Taken
+
+### Step 1: Confirm Strict policy and no CSRF token
+Confirmed via Burp Suite that the session cookie was set with
+`SameSite=Strict`, and that the change-email request had no CSRF token —
+meaning SameSite was the only real protection in place.
+
+### Step 2: Find a "gadget" — a same-site redirect the attacker can influence
+Noticed that posting a blog comment redirects through a confirmation page
+(`/post/comment/confirmation?postId=x`), which performs a **client-side**
+redirect (via JavaScript, not a server-side HTTP redirect) back to the
+blog post, constructing the destination path dynamically from the
+`postId` query parameter.
+
+### Step 3: Test parameter injection into the redirect path
+Changed `postId` to an arbitrary string and confirmed the client-side
+script blindly used it to build the redirect path (e.g.
+`/post/comment/confirmation?postId=foo` → redirected toward `/post/foo`).
+
+### Step 4: Exploit path traversal in the redirect construction
+Injected a path traversal sequence:
+
+/post/comment/confirmation?postId=1/../../my-account
+
+The browser normalized this path and successfully redirected to the
+account page — proving the `postId` parameter could be manipulated to
+redirect to **any** arbitrary endpoint on the *same* site.
+
+### Step 5: Confirm this bypasses SameSite=Strict
+Built a minimal exploit redirecting to this crafted confirmation URL, and
+confirmed that after the client-side redirect completed, the session
+remained authenticated — proving the browser included the session cookie
+on the *second*, client-side-triggered request, even though the *first*
+request originated from an external attacker page.
+
+### Step 6: Confirm the target action accepts GET
+Converted the `POST /my-account/change-email` request to GET in Burp
+Repeater and confirmed the server accepted it as a valid GET request too
+(same underlying flexibility exploited in Lab 7).
+
+### Step 7: Combine everything into the final exploit
+```html
+<script>
+    document.location = "https://[lab-id].web-security-academy.net/post/comment/confirmation?postId=1/../../my-account/change-email?email=pwned@web-security-academy.net%26submit=1";
+</script>
+```
+The ampersand delimiter before the `submit` parameter had to be URL-
+encoded (`%26`) specifically to avoid it being interpreted as breaking out
+of the outer `postId` parameter during the initial request's own parsing.
+
+### Step 8: Deliver to victim
+Delivered the exploit — the victim's browser first navigated (cross-site)
+to the comment confirmation page (same-site relative to the target, so
+technically this initial request is same-origin once loaded), then the
+page's own client-side JavaScript performed the *actual* navigation to
+the traversal-crafted email-change URL — and because this second
+navigation originated from the target site's own page (not the external
+attacker page), the `Strict` cookie policy correctly classified it as a
+same-site request and included the session cookie.
+
+## Why This Bypasses Strict Specifically
+The key insight: `SameSite=Strict` evaluates same-site-ness based on
+where a request is **initiated from**, not the original external source
+that started the overall chain of navigation. Since the *actual* request
+to `/my-account/change-email` was triggered by JavaScript running
+*on the target site's own page* (the confirmation page, once loaded),
+the browser correctly (from its own narrow perspective) considers that
+specific request same-site — even though the entire attack chain began
+on an external, attacker-controlled page. The path traversal is what
+allows redirecting this "trusted," same-site-originating navigation
+toward an entirely different, sensitive endpoint instead of its intended
+harmless destination.
+
+## Result
+Successfully bypassed SameSite=Strict cookie protection by chaining an
+external redirect into a same-site client-side redirect gadget, then
+exploiting path traversal within that gadget to redirect toward the
+email-change endpoint, causing the session cookie to be included despite
+the strictest cookie policy setting, solving the lab.
+
+## What I Learned
+This was, without question, the most advanced CSRF lab completed — it
+required recognizing that SameSite's protection is evaluated per-request,
+based on immediate origin, not the true start of an attack chain. Any
+same-site page containing attacker-influenceable redirect logic (a
+"gadget") can be abused to launder an initially cross-site attack into a
+sequence of same-site-looking requests. This is a genuinely sophisticated,
+realistic technique that mirrors real-world CSRF research — rather than
+attacking the target endpoint directly, it required finding an entirely
+unrelated feature (blog comment redirects) and recognizing its potential
+as a stepping stone. Combined with Lab 7, this rounds out a strong
+understanding that SameSite cookie policies, even at their strictest
+setting, are not an absolute guarantee against CSRF — they shift the
+attack surface toward finding same-site redirect gadgets and method-
+flexibility quirks, rather than eliminating CSRF risk entirely.
