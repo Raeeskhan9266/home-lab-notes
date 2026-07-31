@@ -1,4 +1,4 @@
-# Cross-Site Request Forgery (CSRF) — PortSwigger Web Security Academy
+# Cross-Site Request Forgery (CSRF)
 
 Tracking hands-on labs completed for the CSRF topic, following the same
 methodology used for SQL Injection and XSS: understanding the
