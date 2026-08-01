@@ -936,6 +936,3 @@ You:	hru
 Hal Pline:	I'm out of the office at the moment, please leave a message.
 You:	go
 Hal Pline:	I would like to apologise for the delay in answering your question; I was watching paint dry.
-CONNECTED:	-- Now chatting with Hal Pline --
-You:	<script>alert(1)</script>
-Hal Pline:	Just stop asking questions and let me out of this tiny box!
