@@ -785,3 +785,7 @@ understanding that SameSite cookie policies, even at their strictest
 setting, are not an absolute guarantee against CSRF — they shift the
 attack surface toward finding same-site redirect gadgets and method-
 flexibility quirks, rather than eliminating CSRF risk entirely.
+
+
+
+SameSite Strict bypass via sibling domain
